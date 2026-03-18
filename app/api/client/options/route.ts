@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 type RequestRecord = {
   country?: unknown;
   site?: unknown;
+  request_language?: unknown;
 };
 
 function uniqueSorted(values: string[]): string[] {
@@ -80,7 +81,10 @@ function parseSupplierOptions(csv: string): { countries: string[]; currencies: s
   };
 }
 
-function parseCities(requestsRaw: string): string[] {
+function parseRequestOptions(requestsRaw: string): {
+  cities: string[];
+  requestLanguages: string[];
+} {
   try {
     const requests = JSON.parse(requestsRaw) as RequestRecord[];
     const cities = requests
@@ -88,9 +92,24 @@ function parseCities(requestsRaw: string): string[] {
         typeof item.site === "string" ? item.site.trim() : "",
       )
       .filter(Boolean);
-    return uniqueSorted(cities);
+
+    const requestLanguages = requests
+      .map((item) =>
+        typeof item.request_language === "string"
+          ? item.request_language.trim().toLowerCase()
+          : "",
+      )
+      .filter(Boolean);
+
+    return {
+      cities: uniqueSorted(cities),
+      requestLanguages: uniqueSorted(requestLanguages),
+    };
   } catch {
-    return [];
+    return {
+      cities: [],
+      requestLanguages: [],
+    };
   }
 }
 
@@ -111,13 +130,14 @@ export async function GET() {
 
     const categories = parseCategories(categoriesCsv);
     const supplierOptions = parseSupplierOptions(suppliersCsv);
-    const cities = parseCities(requestsJson);
+    const requestOptions = parseRequestOptions(requestsJson);
 
     return NextResponse.json({
       category_l1_options: categories.categoryL1,
       category_l2_by_l1: categories.categoryL2ByL1,
       country_options: supplierOptions.countries,
-      city_options: cities,
+      city_options: requestOptions.cities,
+      request_language_options: requestOptions.requestLanguages,
       currency_options: supplierOptions.currencies,
     });
   } catch (error) {

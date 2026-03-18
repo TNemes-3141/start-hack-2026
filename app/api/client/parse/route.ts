@@ -59,7 +59,7 @@ const EXTRACTION_SYSTEM_PROMPT =
   `Return exactly one JSON object with keys: ${EXTRACTION_KEYS}. ` +
   "Use empty string for unknown text fields, 0 for unknown numbers, [] for unknown arrays, false for unknown booleans. " +
   "Infer values from the request text only. " +
-  "Detect the input language and set request_language to that language in English (for example: English, German, French). " +
+  "Detect the input language and set request_language as a lowercase ISO 639-1 code (for example: en, fr, de). " +
   "Output all other textual fields in English consistently, even when the input request is in another language. " +
   "contract_type_requested must be exactly one of: purchase, sell. If not explicit, return empty string. " +
   "Use ISO date format YYYY-MM-DD when a date is known. " +
@@ -72,7 +72,7 @@ const REVIEW_SYSTEM_PROMPT =
   "You are reviewing a first-pass procurement extraction for semantic correctness. " +
   `Return exactly one corrected JSON object with keys: ${EXTRACTION_KEYS}. ` +
   "Preserve values that are already correct, but fix field-role mistakes. " +
-  "Ensure consistent English normalization for all textual fields except request_language, which must name the detected input language in English. " +
+  "Ensure consistent English normalization for all textual fields except request_language, which must be a lowercase ISO 639-1 code for the input language (for example: en, fr, de). " +
   "contract_type_requested must be either 'purchase' or 'sell'. If unknown, return empty string. " +
   "Critically verify supplier roles: preferred_supplier_mentioned must represent the requested supplier in this request, while incumbent_supplier must represent an existing current supplier only if explicitly supported by text. " +
   "Use empty string / 0 / [] / false for unknowns.";

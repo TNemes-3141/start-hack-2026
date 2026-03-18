@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown } from "lucide-react";
 
 type ClientRequestForm = {
   request_language: string;
@@ -26,6 +27,7 @@ type ClientRequestForm = {
 };
 
 type FormOptions = {
+  request_language_options: string[];
   category_l1_options: string[];
   category_l2_by_l1: Record<string, string[]>;
   country_options: string[];
@@ -57,6 +59,7 @@ const EMPTY_FORM: ClientRequestForm = {
 };
 
 const EMPTY_OPTIONS: FormOptions = {
+  request_language_options: [],
   category_l1_options: [],
   category_l2_by_l1: {},
   country_options: [],
@@ -117,7 +120,6 @@ export default function ClientPage() {
   const [form, setForm] = useState<ClientRequestForm>(EMPTY_FORM);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [deliveryCountriesInput, setDeliveryCountriesInput] = useState("");
   const [hasExtractionResult, setHasExtractionResult] = useState(false);
   const [showPromptCard, setShowPromptCard] = useState(true);
   const [isPromptLeaving, setIsPromptLeaving] = useState(false);
@@ -206,7 +208,6 @@ export default function ClientPage() {
       }
 
       setForm(payload.data);
-      setDeliveryCountriesInput(payload.data.delivery_countries.join(", "));
       setIsPromptLeaving(true);
       window.setTimeout(() => {
         setHasExtractionResult(true);
@@ -313,9 +314,13 @@ export default function ClientPage() {
               <h2 className="mb-5 text-xl font-semibold">Structured Request Form</h2>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <TextField
+                <SelectField
                   label="Request Language"
                   value={form.request_language}
+                  options={mergeSelectOptions(
+                    formOptions.request_language_options,
+                    form.request_language,
+                  )}
                   onChange={(value) => setForm({ ...form, request_language: value })}
                 />
                 <TextField
@@ -428,19 +433,16 @@ export default function ClientPage() {
                     setForm({ ...form, contract_type_requested: value })
                   }
                 />
-                <TextField
-                  label="Delivery Countries (comma separated, e.g. DE, FR)"
-                  value={deliveryCountriesInput}
-                  onChange={(value) => {
-                    setDeliveryCountriesInput(value);
-                    setForm({
-                      ...form,
-                      delivery_countries: value
-                        .split(",")
-                        .map((item) => item.trim().toUpperCase())
-                        .filter(Boolean),
-                    });
-                  }}
+                <MultiSelectCombobox
+                  label="Delivery Countries"
+                  values={form.delivery_countries}
+                  options={mergeMultiSelectOptions(
+                    formOptions.country_options,
+                    form.delivery_countries,
+                  )}
+                  onChange={(values) =>
+                    setForm({ ...form, delivery_countries: values })
+                  }
                 />
               </div>
 
@@ -544,6 +546,107 @@ function SelectField({ label, value, options, onChange }: SelectFieldProps) {
   );
 }
 
+type MultiSelectFieldProps = {
+  label: string;
+  values: string[];
+  options: string[];
+  onChange: (values: string[]) => void;
+};
+
+function MultiSelectCombobox({
+  label,
+  values,
+  options,
+  onChange,
+}: MultiSelectFieldProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return options;
+    }
+    return options.filter((option) =>
+      option.toLowerCase().includes(normalizedQuery),
+    );
+  }, [options, query]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      window.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  function toggleValue(value: string) {
+    if (values.includes(value)) {
+      onChange(values.filter((item) => item !== value));
+      return;
+    }
+    onChange([...values, value]);
+  }
+
+  return (
+    <div className="block" ref={containerRef}>
+      <span className="mb-1 block text-sm font-medium text-zinc-800">{label}</span>
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          className="flex w-full items-center justify-between gap-2 rounded-md border border-zinc-300 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+          aria-expanded={open}
+        >
+          <span className="truncate">
+            {values.length > 0 ? values.join(", ") : "Select from country list"}
+          </span>
+          <ChevronDown className="size-4 shrink-0 text-zinc-500" />
+        </button>
+
+        {open ? (
+          <div className="mt-2 rounded-md border border-zinc-200 bg-white p-2 shadow-sm">
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search countries..."
+              className="mb-2 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+            />
+            <div className="max-h-44 overflow-y-auto rounded-md border border-zinc-200">
+              {filteredOptions.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-zinc-500">No countries found.</p>
+              ) : (
+                filteredOptions.map((option) => {
+                  const isSelected = values.includes(option);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => toggleValue(option)}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                    >
+                      <span>{option}</span>
+                      {isSelected ? <Check className="size-4 text-zinc-700" /> : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : null}
+    </div>
+  );
+}
+
 type NumberFieldProps = {
   label: string;
   value: number;
@@ -589,6 +692,14 @@ function mergeSelectOptions(options: string[], currentValue: string): string[] {
     return options;
   }
   return [currentValue, ...options];
+}
+
+function mergeMultiSelectOptions(
+  options: string[],
+  currentValues: string[],
+): string[] {
+  const missingCurrent = currentValues.filter((value) => !options.includes(value));
+  return [...missingCurrent, ...options];
 }
 
 function LoadingSkeletonCard() {
