@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, SendHorizontal } from "lucide-react";
+import Dither from "@/components/Dither";
+import Dot from "@/components/animata/background/dot";
 
 type ClientRequestForm = {
   request_language: string;
@@ -114,9 +116,7 @@ const REQUIRED_FIELDS: Array<keyof ClientRequestForm> = [
 const CONTRACT_TYPE_OPTIONS = ["purchase", "sell"];
 
 export default function ClientPage() {
-  const [prompt, setPrompt] = useState(
-    "Need 240 docking stations matching existing laptop fleet. Must be delivered by 2026-03-20 with premium specification. Budget capped at 25 199.55 EUR. Please use Dell Enterprise Europe with no exception.",
-  );
+  const [prompt, setPrompt] = useState("");
   const [form, setForm] = useState<ClientRequestForm>(EMPTY_FORM);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -126,6 +126,7 @@ export default function ClientPage() {
   const [showResultCard, setShowResultCard] = useState(false);
   const [isResultVisible, setIsResultVisible] = useState(false);
   const [formOptions, setFormOptions] = useState<FormOptions>(EMPTY_OPTIONS);
+  const [isDark, setIsDark] = useState(false);
 
   const canExtract = useMemo(() => !isLoading && prompt.trim().length > 0, [
     isLoading,
@@ -167,6 +168,17 @@ export default function ClientPage() {
   const hasMissingInfo = missingFields.length > 0;
 
   useEffect(() => {
+    const root = document.documentElement;
+    const stored = window.localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const shouldUseDark =
+      stored === "dark" || (!stored && (root.classList.contains("dark") || prefersDark));
+
+    root.classList.toggle("dark", shouldUseDark);
+    setIsDark(shouldUseDark);
+  }, []);
+
+  useEffect(() => {
     async function loadOptions() {
       try {
         const response = await fetch("/api/client/options");
@@ -183,6 +195,15 @@ export default function ClientPage() {
 
     void loadOptions();
   }, []);
+
+  function handleThemeToggle() {
+    setIsDark((previous) => {
+      const next = !previous;
+      document.documentElement.classList.toggle("dark", next);
+      window.localStorage.setItem("theme", next ? "dark" : "light");
+      return next;
+    });
+  }
 
   async function handleExtract(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -233,84 +254,105 @@ export default function ClientPage() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Client Procurement Request
-          </h1>
+    <main className="relative min-h-screen overflow-hidden bg-background text-foreground transition-colors">
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <Dot className="absolute inset-0 opacity-15" spacing={30} />
+        <Dither
+          waveColor={[0.5, 0.5, 0.5]}
+          disableAnimation={false}
+          enableMouseInteraction
+          mouseRadius={0.3}
+          colorNum={4}
+          waveAmplitude={0.3}
+          waveFrequency={3}
+          waveSpeed={0.05}
+          className="absolute inset-0 opacity-15"
+        />
+      </div>
+
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-10">
+        <header className="flex items-center justify-end gap-4">
+          <button
+            type="button"
+            onClick={handleThemeToggle}
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
+          >
+            {isDark ? "Dark Mode" : "Light Mode"}
+          </button>
         </header>
 
         {showPromptCard ? (
-          <div className="relative min-h-[290px]">
-            <form
-              onSubmit={handleExtract}
-              className={`rounded-xl border border-zinc-200 bg-white p-6 shadow-sm transition-all duration-300 ease-out ${
-                isLoading
-                  ? "pointer-events-none -translate-y-1 scale-[0.99] opacity-0"
-                  : isPromptLeaving
+          <div className="flex flex-1 items-center justify-center">
+            <div className="relative w-full max-w-3xl">
+              <form
+                onSubmit={handleExtract}
+                className={`space-y-6 transition-all duration-300 ease-out ${
+                  isLoading || isPromptLeaving
                     ? "pointer-events-none -translate-y-1 scale-[0.99] opacity-0"
                     : "translate-y-0 scale-100 opacity-100"
-              }`}
-            >
-              <label
-                htmlFor="request-prompt"
-                className="mb-2 block text-sm font-medium text-zinc-800"
+                }`}
               >
-                Natural language request
-              </label>
-              <textarea
-                id="request-prompt"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                rows={5}
-                className="w-full rounded-md border border-zinc-300 p-3 text-sm focus:border-zinc-500 focus:outline-none"
-                placeholder="Describe your procurement need in natural language..."
-              />
+                <h1 className="text-center text-3xl font-semibold tracking-tight md:text-4xl">
+                  Hi, what procurement would you like to request?
+                </h1>
 
-              <div className="mt-4 flex items-center gap-4">
-                <button
-                  type="submit"
-                  disabled={!canExtract}
-                  className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Extract fields with OpenAI
-                </button>
+                <div className="rounded-2xl border border-border bg-card/90 p-2 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="request-prompt"
+                      type="text"
+                      value={prompt}
+                      onChange={(event) => setPrompt(event.target.value)}
+                      className="h-12 w-full rounded-xl border border-transparent bg-transparent px-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+                      placeholder="Describe your procurement request..."
+                    />
+                    <button
+                      type="submit"
+                      disabled={!canExtract}
+                      aria-label="Send request"
+                      title="Send request"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <SendHorizontal className="size-4" />
+                    </button>
+                  </div>
+                </div>
+
                 {errorMessage ? (
-                  <p className="text-sm text-red-600">{errorMessage}</p>
+                  <p className="text-center text-sm text-destructive">{errorMessage}</p>
                 ) : null}
-              </div>
-            </form>
+              </form>
 
-            <div
-              className={`absolute inset-0 transition-all duration-300 ease-out ${
-                isLoading
-                  ? "translate-y-0 scale-100 opacity-100"
-                  : "pointer-events-none translate-y-1 scale-[0.99] opacity-0"
-              }`}
-            >
-              <LoadingSkeletonCard />
+              <div
+                className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ease-out ${
+                  isLoading
+                    ? "translate-y-0 scale-100 opacity-100"
+                    : "pointer-events-none translate-y-1 scale-[0.99] opacity-0"
+                }`}
+              >
+                <LoadingSkeletonCard />
+              </div>
             </div>
           </div>
         ) : null}
 
         {showResultCard && hasExtractionResult && hasMissingInfo ? (
           <section
-            className={`space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-6 shadow-sm transition-all duration-300 ease-out ${
+            className={`space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 ease-out ${
               isResultVisible
                 ? "translate-y-0 scale-100 opacity-100"
                 : "translate-y-1 scale-[0.99] opacity-0"
             }`}
           >
-            <div className="rounded-md border border-amber-300 bg-amber-100 p-3 text-sm text-amber-900">
+            <div className="rounded-md border border-border bg-muted p-3 text-sm text-foreground">
               We are missing some required information. Please review and complete
               the fields below.
             </div>
-            <p className="text-sm text-amber-900">
+            <p className="text-sm text-muted-foreground">
               Missing fields: {missingFields.join(", ")}
             </p>
 
-            <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
               <h2 className="mb-5 text-xl font-semibold">Structured Request Form</h2>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -447,14 +489,14 @@ export default function ClientPage() {
               </div>
 
               <div className="mt-4">
-                <label className="inline-flex items-center gap-2 text-sm font-medium text-zinc-800">
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
                   <input
                     type="checkbox"
                     checked={form.esg_requirement}
                     onChange={(event) =>
                       setForm({ ...form, esg_requirement: event.target.checked })
                     }
-                    className="size-4 rounded border-zinc-300"
+                    className="size-4 rounded border-input"
                   />
                   ESG Requirement
                 </label>
@@ -463,7 +505,7 @@ export default function ClientPage() {
               <div className="mt-4">
                 <label
                   htmlFor="request-text"
-                  className="mb-2 block text-sm font-medium text-zinc-800"
+                  className="mb-2 block text-sm font-medium text-foreground"
                 >
                   Request Details
                 </label>
@@ -474,7 +516,7 @@ export default function ClientPage() {
                     setForm({ ...form, request_text: event.target.value })
                   }
                   rows={4}
-                  className="w-full rounded-md border border-zinc-300 p-3 text-sm focus:border-zinc-500 focus:outline-none"
+                  className="w-full rounded-md border border-input bg-background p-3 text-sm text-foreground focus:border-ring focus:outline-none"
                 />
               </div>
             </div>
@@ -483,13 +525,13 @@ export default function ClientPage() {
 
         {showResultCard && hasExtractionResult && !hasMissingInfo ? (
           <section
-            className={`rounded-xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm transition-all duration-300 ease-out ${
+            className={`rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 ease-out ${
               isResultVisible
                 ? "translate-y-0 scale-100 opacity-100"
                 : "translate-y-1 scale-[0.99] opacity-0"
             }`}
           >
-            <p className="text-sm text-emerald-900">
+            <p className="text-sm text-foreground">
               Thanks. We have all required information from your request.
             </p>
           </section>
@@ -508,12 +550,12 @@ type FieldProps = {
 function TextField({ label, value, onChange }: FieldProps) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-zinc-800">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-foreground">{label}</span>
       <input
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
       />
     </label>
   );
@@ -529,11 +571,11 @@ type SelectFieldProps = {
 function SelectField({ label, value, options, onChange }: SelectFieldProps) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-zinc-800">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-foreground">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
       >
         <option value="">Select...</option>
         {options.map((option) => (
@@ -599,31 +641,31 @@ function MultiSelectCombobox({
 
   return (
     <div className="block" ref={containerRef}>
-      <span className="mb-1 block text-sm font-medium text-zinc-800">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-foreground">{label}</span>
         <button
           type="button"
           onClick={() => setOpen((prev) => !prev)}
-          className="flex w-full items-center justify-between gap-2 rounded-md border border-zinc-300 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+          className="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-left text-sm text-foreground hover:bg-accent"
           aria-expanded={open}
         >
           <span className="truncate">
             {values.length > 0 ? values.join(", ") : "Select from country list"}
           </span>
-          <ChevronDown className="size-4 shrink-0 text-zinc-500" />
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
         </button>
 
         {open ? (
-          <div className="mt-2 rounded-md border border-zinc-200 bg-white p-2 shadow-sm">
+          <div className="mt-2 rounded-md border border-border bg-popover p-2 shadow-sm">
             <input
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search countries..."
-              className="mb-2 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+              className="mb-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
             />
-            <div className="max-h-44 overflow-y-auto rounded-md border border-zinc-200">
+            <div className="max-h-44 overflow-y-auto rounded-md border border-border">
               {filteredOptions.length === 0 ? (
-                <p className="px-3 py-2 text-sm text-zinc-500">No countries found.</p>
+                <p className="px-3 py-2 text-sm text-muted-foreground">No countries found.</p>
               ) : (
                 filteredOptions.map((option) => {
                   const isSelected = values.includes(option);
@@ -632,10 +674,10 @@ function MultiSelectCombobox({
                       key={option}
                       type="button"
                       onClick={() => toggleValue(option)}
-                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-foreground hover:bg-accent"
                     >
                       <span>{option}</span>
-                      {isSelected ? <Check className="size-4 text-zinc-700" /> : null}
+                      {isSelected ? <Check className="size-4 text-primary" /> : null}
                     </button>
                   );
                 })
@@ -656,12 +698,12 @@ type NumberFieldProps = {
 function NumberField({ label, value, onChange }: NumberFieldProps) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-zinc-800">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-foreground">{label}</span>
       <input
         type="number"
         value={Number.isFinite(value) ? value : 0}
         onChange={(event) => onChange(Number(event.target.value) || 0)}
-        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
       />
     </label>
   );
@@ -676,12 +718,12 @@ type DateFieldProps = {
 function DateField({ label, value, onChange }: DateFieldProps) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-zinc-800">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-foreground">{label}</span>
       <input
         type="date"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
       />
     </label>
   );
@@ -704,14 +746,14 @@ function mergeMultiSelectOptions(
 
 function LoadingSkeletonCard() {
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-      <p className="mb-4 text-sm font-medium text-zinc-700">
+    <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+      <p className="mb-4 text-sm font-medium text-foreground">
         Analyzing your request...
       </p>
       <div className="space-y-3 animate-pulse">
-        <div className="h-4 w-48 rounded bg-zinc-200" />
-        <div className="h-24 w-full rounded-md bg-zinc-200" />
-        <div className="mt-2 h-10 w-40 rounded-md bg-zinc-200" />
+        <div className="h-4 w-48 rounded bg-muted" />
+        <div className="h-24 w-full rounded-md bg-muted" />
+        <div className="mt-2 h-10 w-40 rounded-md bg-muted" />
       </div>
     </section>
   );

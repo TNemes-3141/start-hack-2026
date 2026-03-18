@@ -1,68 +1,137 @@
-import { User, ShoppingCart, Tag, TrendingUp, Briefcase } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { selectRole } from "@/app/actions"
-import type { Role } from "@/lib/session"
+"use client";
 
-const roles: { role: Role; label: string; description: string; icon: React.ReactNode }[] = [
-  {
-    role: "client",
-    label: "Client",
-    description: "Submit and track your procurement requests.",
-    icon: <User className="h-6 w-6" />,
-  },
-  {
-    role: "procurement",
-    label: "Procurement",
-    description: "Manage and process incoming purchase requests.",
-    icon: <ShoppingCart className="h-6 w-6" />,
-  },
-  {
-    role: "head-of-category",
-    label: "Head of Category",
-    description: "Oversee category strategies and supplier decisions.",
-    icon: <Tag className="h-6 w-6" />,
-  },
-  {
-    role: "head-of-strategic-sourcing",
-    label: "Head of Strategic Sourcing",
-    description: "Drive sourcing initiatives and vendor negotiations.",
-    icon: <TrendingUp className="h-6 w-6" />,
-  },
-  {
-    role: "cpo",
-    label: "CPO",
-    description: "Full visibility across all procurement operations.",
-    icon: <Briefcase className="h-6 w-6" />,
-  },
-]
+import { useEffect, useRef, useState } from "react";
+import Dither from '@/components/Dither';
+import Dot from "@/components/animata/background/dot";
+import AbstractShape from "@/components/animata/abstract-shape";
+import image0 from "@/public/images/image0.png"
+import image1 from "@/public/images/image1.png"
+import image2 from "@/public/images/image2.png"
+import Image from "next/image";
+import Link from "next/link";
 
-export default function Home() {
+export default function LandingPage() {
+  const carouselTrackRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    let rafId = 0;
+    let lastTs = performance.now();
+    let offset = 0;
+
+    const animate = (ts: number) => {
+      const track = carouselTrackRef.current;
+      if (!track) {
+        rafId = requestAnimationFrame(animate);
+        return;
+      }
+
+      const singleLoopWidth = track.scrollWidth / 2;
+      if (singleLoopWidth > 0) {
+        const delta = ts - lastTs;
+        const speedPxPerSecond = 36;
+        offset = (offset + (delta * speedPxPerSecond) / 1000) % singleLoopWidth;
+
+        // Move left continuously; duplicate content makes this seamless.
+        track.style.transform = `translate3d(${-offset}px, 0, 0)`;
+      }
+      lastTs = ts;
+      rafId = requestAnimationFrame(animate);
+    };
+
+    rafId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const storedTheme = window.localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const initialTheme =
+      storedTheme === "light" || storedTheme === "dark"
+        ? storedTheme
+        : prefersDark
+          ? "dark"
+          : "light";
+
+    root.classList.toggle("dark", initialTheme === "dark");
+    setTheme(initialTheme);
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    document.documentElement.classList.toggle("dark", nextTheme === "dark");
+    window.localStorage.setItem("theme", nextTheme);
+    setTheme(nextTheme);
+  };
+
+  const carouselImages = [
+    { src: image1, alt: "Dashboard preview 1" },
+    { src: image2, alt: "Dashboard preview 2" },
+    { src: image0, alt: "Dashboard preview 3" },
+  ];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Select your role</CardTitle>
-          <CardDescription>Choose how you want to access the dashboard.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {roles.map(({ role, label, description, icon }) => (
-            <form key={role} action={selectRole.bind(null, role, label)}>
-              <Button
-                type="submit"
-                variant="outline"
-                className="w-full h-auto justify-start gap-4 px-4 py-3"
-              >
-                <span className="text-muted-foreground">{icon}</span>
-                <span className="flex flex-col items-start gap-0.5">
-                  <span className="text-sm font-medium">{label}</span>
-                  <span className="text-xs text-muted-foreground font-normal">{description}</span>
-                </span>
-              </Button>
-            </form>
-          ))}
-        </CardContent>
-      </Card>
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <Dot className="absolute top-0 inset-0 opacity-15" spacing={30} />
+        <Dither
+          waveColor={[0.5, 0.5, 0.5]}
+          disableAnimation={false}
+          enableMouseInteraction
+          mouseRadius={0.3}
+          colorNum={4}
+          waveAmplitude={0.3}
+          waveFrequency={3}
+          waveSpeed={0.05}
+          className="absolute top-0 inset-0 opacity-15"
+        />
+      </div>
+
+      <main className="relative z-10 mx-auto grid min-h-screen w-full grid-cols-1 items-center p-8 text-center lg:grid-cols-12 lg:grid-rows-12">
+        <h1 className="w-full max-w-4xl text-left text-[9vw] text font-medium leading-none lg:col-start-1 lg:col-span-8 lg:row-start-1 lg:row-span-5 lg:self-start">
+          TEST
+        </h1>
+        <p className="w-full text-justify max-w-3xl text-sm text-muted-foreground sm:text-base lg:col-start-9 lg:col-span-4 lg:row-start-7 lg:row-span-2 lg:self-end pb-10">
+          Penrose Function turns market complexity into clarity, combining data,
+          context, and intelligent analysis so you can move from research to
+          confident decisions faster.
+        </p>
+        <nav className="text-xl flex justify-between lg:col-start-9 lg:col-span-4 lg:row-start-1 lg:row-span-1 pr-14 z-10">
+          <Link href="/procurement" className="underline underline-offset-5">Dashboard</Link>
+          <Link href="/client" className="underline underline-offset-5">Client</Link>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="underline underline-offset-5 cursor-pointer"
+          >
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
+        </nav>
+        <div className="h-full w-full justify-self-center lg:col-start-1 lg:col-span-12 lg:row-start-1 lg:row-span-12">
+          <AbstractShape />
+        </div>
+        <div className="lg:col-start-1 lg:col-span-12 lg:row-start-8 lg:row-span-5 relative h-full overflow-hidden">
+          <div
+            ref={carouselTrackRef}
+            className="flex h-full w-max items-end gap-2 will-change-transform"
+          >
+            {[...carouselImages, ...carouselImages].map((image, index) => (
+              <Image
+                key={`${image.alt}-${index}`}
+                src={image.src}
+                alt={image.alt}
+                width={2984}
+                height={1836}
+                className="h-[300px] w-auto shrink-0 rounded-lg object-contain transition-transform duration-300 ease-out hover:z-10 hover:scale-101"
+              />
+            ))}
+          </div>
+        </div>
+      </main>
     </div>
-  )
+  );
 }

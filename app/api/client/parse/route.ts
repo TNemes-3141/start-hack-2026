@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
@@ -22,6 +24,21 @@ type ParsedClientRequest = {
   contract_type_requested: string;
   delivery_countries: string[];
   esg_requirement: boolean;
+};
+
+type ChoiceOptions = {
+  request_language_options: string[];
+  category_l1_options: string[];
+  category_l2_by_l1: Record<string, string[]>;
+  country_options: string[];
+  city_options: string[];
+  currency_options: string[];
+  contract_type_options: string[];
+};
+
+type RequestRecord = {
+  site?: unknown;
+  request_language?: unknown;
 };
 
 const openai = new OpenAI({
@@ -66,7 +83,8 @@ const EXTRACTION_SYSTEM_PROMPT =
   "delivery_countries must be an array of ISO 3166-1 alpha-2 country codes (for example ['DE']). " +
   "Semantic definitions: preferred_supplier_mentioned is a supplier explicitly requested/desired in this specific request; incumbent_supplier is the currently active supplier relationship before this request. " +
   "If there is no explicit evidence of an incumbent supplier, keep incumbent_supplier empty. " +
-  "Do not rely on keyword heuristics; infer based on role and context in the sentence.";
+  "Do not rely on keyword heuristics; infer based on role and context in the sentence. " +
+  "For choice fields, use only values from ALLOWED_OPTIONS provided by the user.";
 
 const REVIEW_SYSTEM_PROMPT =
   "You are reviewing a first-pass procurement extraction for semantic correctness. " +
@@ -75,7 +93,151 @@ const REVIEW_SYSTEM_PROMPT =
   "Ensure consistent English normalization for all textual fields except request_language, which must be a lowercase ISO 639-1 code for the input language (for example: en, fr, de). " +
   "contract_type_requested must be either 'purchase' or 'sell'. If unknown, return empty string. " +
   "Critically verify supplier roles: preferred_supplier_mentioned must represent the requested supplier in this request, while incumbent_supplier must represent an existing current supplier only if explicitly supported by text. " +
-  "Use empty string / 0 / [] / false for unknowns.";
+  "Use empty string / 0 / [] / false for unknowns. " +
+  "For choice fields, use only values from ALLOWED_OPTIONS provided by the user.";
+
+const DATA_DIR = path.resolve(
+  process.cwd(),
+  "mockdata",
+  "zChainIQ-START-Hack-2026--main",
+  "data",
+);
+
+let choiceOptionsPromise: Promise<ChoiceOptions> | null = null;
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+
+function parseCategories(csv: string): {
+  categoryL1: string[];
+  categoryL2ByL1: Record<string, string[]>;
+} {
+  const lines = csv.split(/\r?\n/).filter(Boolean);
+  const l1Values = new Set<string>();
+  const l2ByL1 = new Map<string, Set<string>>();
+
+  lines.slice(1).forEach((line) => {
+    const [l1Raw, l2Raw] = line.split(",");
+    const l1 = l1Raw?.trim() ?? "";
+    const l2 = l2Raw?.trim() ?? "";
+
+    if (!l1 || !l2) {
+      return;
+    }
+
+    l1Values.add(l1);
+    if (!l2ByL1.has(l1)) {
+      l2ByL1.set(l1, new Set<string>());
+    }
+    l2ByL1.get(l1)?.add(l2);
+  });
+
+  const categoryL2ByL1: Record<string, string[]> = {};
+  l2ByL1.forEach((values, key) => {
+    categoryL2ByL1[key] = uniqueSorted(Array.from(values));
+  });
+
+  return {
+    categoryL1: uniqueSorted(Array.from(l1Values)),
+    categoryL2ByL1,
+  };
+}
+
+function parseSupplierOptions(csv: string): { countries: string[]; currencies: string[] } {
+  const lines = csv.split(/\r?\n/).filter(Boolean);
+  const countries = new Set<string>();
+  const currencies = new Set<string>();
+
+  lines.slice(1).forEach((line) => {
+    const parts = line.split(",");
+    const countryHq = parts[4]?.trim() ?? "";
+    const serviceRegions = parts[5]?.trim() ?? "";
+    const currency = parts[6]?.trim() ?? "";
+
+    if (countryHq) {
+      countries.add(countryHq);
+    }
+    if (currency) {
+      currencies.add(currency);
+    }
+
+    serviceRegions
+      .split(";")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .forEach((countryCode) => countries.add(countryCode));
+  });
+
+  return {
+    countries: uniqueSorted(Array.from(countries)),
+    currencies: uniqueSorted(Array.from(currencies)),
+  };
+}
+
+function parseRequestOptions(requestsRaw: string): {
+  cities: string[];
+  requestLanguages: string[];
+} {
+  try {
+    const requests = JSON.parse(requestsRaw) as RequestRecord[];
+
+    const cities = requests
+      .map((item) => (typeof item.site === "string" ? item.site.trim() : ""))
+      .filter(Boolean);
+
+    const requestLanguages = requests
+      .map((item) =>
+        typeof item.request_language === "string"
+          ? item.request_language.trim().toLowerCase()
+          : "",
+      )
+      .filter(Boolean);
+
+    return {
+      cities: uniqueSorted(cities),
+      requestLanguages: uniqueSorted(requestLanguages),
+    };
+  } catch {
+    return {
+      cities: [],
+      requestLanguages: [],
+    };
+  }
+}
+
+async function getChoiceOptions(): Promise<ChoiceOptions> {
+  if (!choiceOptionsPromise) {
+    choiceOptionsPromise = (async () => {
+      const [categoriesCsv, suppliersCsv, requestsJson] = await Promise.all([
+        readFile(path.join(DATA_DIR, "categories.csv"), "utf8"),
+        readFile(path.join(DATA_DIR, "suppliers.csv"), "utf8"),
+        readFile(path.join(DATA_DIR, "requests.json"), "utf8"),
+      ]);
+
+      const categories = parseCategories(categoriesCsv);
+      const suppliers = parseSupplierOptions(suppliersCsv);
+      const requests = parseRequestOptions(requestsJson);
+
+      return {
+        request_language_options: requests.requestLanguages,
+        category_l1_options: categories.categoryL1,
+        category_l2_by_l1: categories.categoryL2ByL1,
+        country_options: suppliers.countries,
+        city_options: requests.cities,
+        currency_options: suppliers.currencies,
+        contract_type_options: ["purchase", "sell"],
+      };
+    })().catch((error) => {
+      choiceOptionsPromise = null;
+      throw error;
+    });
+  }
+
+  return choiceOptionsPromise;
+}
 
 function readString(value: unknown): string {
   if (typeof value === "string") {
@@ -133,32 +295,62 @@ function readContractType(value: unknown): string {
   return "";
 }
 
-function normalizeParsedRequest(payload: unknown): ParsedClientRequest {
+function normalizeChoice(value: string, options: string[]): string {
+  const normalizedValue = value.trim().toLowerCase();
+  if (!normalizedValue) {
+    return "";
+  }
+
+  const matched = options.find((option) => option.toLowerCase() === normalizedValue);
+  return matched ?? "";
+}
+
+function normalizeParsedRequest(
+  payload: unknown,
+  choices: ChoiceOptions,
+): ParsedClientRequest {
   const input =
     payload && typeof payload === "object"
       ? (payload as Record<string, unknown>)
       : {};
 
+  const categoryL1 = normalizeChoice(
+    readString(input.category_l1),
+    choices.category_l1_options,
+  );
+  const categoryL2 = normalizeChoice(
+    readString(input.category_l2),
+    choices.category_l2_by_l1[categoryL1] ?? [],
+  );
+
   return {
-    request_language: readString(input.request_language),
+    request_language: normalizeChoice(
+      readString(input.request_language),
+      choices.request_language_options,
+    ),
     business_unit: readString(input.business_unit),
-    country: readString(input.country),
-    city: readString(input.city),
+    country: normalizeChoice(readString(input.country), choices.country_options),
+    city: normalizeChoice(readString(input.city), choices.city_options),
     requester_id: readString(input.requester_id),
     requester_role: readString(input.requester_role),
-    category_l1: readString(input.category_l1),
-    category_l2: readString(input.category_l2),
+    category_l1: categoryL1,
+    category_l2: categoryL2,
     title: readString(input.title),
     request_text: readString(input.request_text),
-    currency: readString(input.currency),
+    currency: normalizeChoice(readString(input.currency), choices.currency_options),
     budget_amount: readNumber(input.budget_amount),
     quantity: readNumber(input.quantity),
     unit_of_measure: readString(input.unit_of_measure),
     required_by_date: readString(input.required_by_date),
     preferred_supplier_mentioned: readString(input.preferred_supplier_mentioned),
     incumbent_supplier: readString(input.incumbent_supplier),
-    contract_type_requested: readContractType(input.contract_type_requested),
-    delivery_countries: readStringArray(input.delivery_countries),
+    contract_type_requested: normalizeChoice(
+      readContractType(input.contract_type_requested),
+      choices.contract_type_options,
+    ),
+    delivery_countries: readStringArray(input.delivery_countries)
+      .map((value) => normalizeChoice(value, choices.country_options))
+      .filter(Boolean),
     esg_requirement: readBoolean(input.esg_requirement),
   };
 }
@@ -189,6 +381,8 @@ export async function POST(request: Request) {
     if (!prompt) {
       return NextResponse.json({ error: "Prompt is required." }, { status: 400 });
     }
+    const choiceOptions = await getChoiceOptions();
+    const allowedOptionsPayload = JSON.stringify(choiceOptions);
 
     const firstPass = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -201,7 +395,11 @@ export async function POST(request: Request) {
         },
         {
           role: "user",
-          content: prompt,
+          content:
+            "ALLOWED_OPTIONS JSON:\n" +
+            allowedOptionsPayload +
+            "\n\nOriginal request:\n" +
+            prompt,
         },
       ],
     });
@@ -223,6 +421,8 @@ export async function POST(request: Request) {
           content:
             "Original request:\n" +
             prompt +
+            "\n\nALLOWED_OPTIONS JSON:\n" +
+            allowedOptionsPayload +
             "\n\nFirst-pass extraction JSON:\n" +
             JSON.stringify(firstPassParsed),
         },
@@ -232,7 +432,7 @@ export async function POST(request: Request) {
     const reviewedRaw = reviewPass.choices[0]?.message?.content;
     const reviewedParsed = parseModelJson(reviewedRaw);
 
-    const data = normalizeParsedRequest(reviewedParsed);
+    const data = normalizeParsedRequest(reviewedParsed, choiceOptions);
     const merged = {
       ...DEFAULTS,
       ...data,
