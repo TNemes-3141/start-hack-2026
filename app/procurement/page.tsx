@@ -6,12 +6,6 @@ import type { Role } from "@/lib/session"
 
 const roles: { role: Role; label: string; description: string; icon: React.ReactNode }[] = [
   {
-    role: "client",
-    label: "Client",
-    description: "Submit and track your procurement requests.",
-    icon: <User className="h-6 w-6" />,
-  },
-  {
     role: "procurement",
     label: "Procurement",
     description: "Manage and process incoming purchase requests.",

@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import type { Group } from "three";
 
-function AbstractMesh() {
+function AbstractMesh({ color }: { color: string }) {
   const groupRef = useRef<Group>(null);
   const { pointer } = useThree();
   const spinRef = useRef(0);
@@ -46,7 +46,7 @@ function AbstractMesh() {
       </mesh> */}
       <mesh scale={0.5}>
         <icosahedronGeometry args={[1.2, 0]} />
-        <meshBasicMaterial color="white" wireframe transparent opacity={0.35} />
+        <meshBasicMaterial color={color} wireframe transparent opacity={0.35} />
       </mesh>
       {/* <mesh rotation={[0.5, 0.2, 0.3]} scale={0.68}>
         <torusKnotGeometry args={[1.1, 0.16, 120, 14, 2, 3]} />
@@ -65,6 +65,20 @@ function AbstractMesh() {
 }
 
 export default function AbstractShape() {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const updateTheme = () => setIsDarkMode(root.classList.contains("dark"));
+
+    updateTheme();
+
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="h-full w-full opacity-40">
       <Canvas camera={{ position: [0, 0, 5], fov: 46 }} dpr={[1, 1.75]}>
@@ -74,7 +88,7 @@ export default function AbstractShape() {
         <directionalLight position={[4, 3, 4]} intensity={1.4} color="#ffffff" />
         <directionalLight position={[-3, 2, -4]} intensity={1.1} color="#cbd5e1" />
         <pointLight position={[-3, -2, 3]} intensity={0.75} color="#93c5fd" />
-        <AbstractMesh />
+        <AbstractMesh color={isDarkMode ? "#ffffff" : "#111827"} />
       </Canvas>
     </div>
   );
