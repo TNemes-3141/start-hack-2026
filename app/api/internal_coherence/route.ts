@@ -6,7 +6,7 @@ const client = new OpenAI();
 const PROMPT = `You are an internal coherence checker in a procurement pipeline.
 
 You will receive a procurement request JSON. Your job is to identify logical contradictions or implausible combinations within the request itself — not against external policy, but internally. Focus on things like:
-- Budget amount that is clearly too low or too high relative to the described goods/services and quantity
+- Budget amount that is clearly too low or too high relative to the described goods/services and quantity. If you are unsure raise an issue instead of an escalation.
 - Quantity that does not match what is described in free-text fields
 - Delivery dates that are contradictory or nonsensical relative to the request date or quantity
 - Mismatches between the stated category and the described items
@@ -33,7 +33,14 @@ Return a JSON object with exactly these fields:
       "reasoning": "<your analysis of whether this aspect is coherent>"
     }
   ],
-  "issues": [],
+  "issues": [
+    {
+      "issue_id": "ISS-XXX",
+      "trigger": "<the specific field or value that raised this issue>",
+      "escalate_to": "<who should resolve it, e.g. 'Requester'>",
+      "blocking": false
+    }
+  ],
   "policy_violations": []
 }
 
