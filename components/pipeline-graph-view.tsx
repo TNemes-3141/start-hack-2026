@@ -86,7 +86,7 @@ function StatusNode({ data }: NodeProps) {
   return (
     <div
       className={`rounded-md border-2 bg-card text-card-foreground px-3 py-2 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${border}`}
-      style={{ width: 240 }}
+      style={{ width: NODE_W }}
     >
       <Handle type="target" position={Position.Top} className="bg-border! border-border!" />
       <div className="flex items-center justify-between gap-3">
@@ -101,25 +101,100 @@ function StatusNode({ data }: NodeProps) {
   )
 }
 
-const nodeTypes: NodeTypes = { status: StatusNode }
+function GroupBoxNode({ data }: NodeProps) {
+  const label = data.label as string | undefined
+  return (
+    <div
+      className="relative rounded-lg border-2 border-dashed border-border bg-muted/30 pointer-events-none overflow-visible"
+      style={{ width: data.width as number, height: data.height as number }}
+    >
+      {label && (
+        <span className="absolute -top-6 left-0 text-[11px] font-semibold text-foreground/60 uppercase tracking-widest select-none whitespace-nowrap">
+          {label}
+        </span>
+      )}
+    </div>
+  )
+}
 
-// ── Static layout ─────────────────────────────────────────────────────────────
+const nodeTypes: NodeTypes = { status: StatusNode, "group-box": GroupBoxNode }
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+
+const NODE_W  = 280  // StatusNode width (matches style={{ width: NODE_W }})
+const NODE_H  = 44   // Approximate rendered height of a StatusNode
+const BOX_PAD = 16   // Padding on every side between box border and node edges
+
+const gbProps = { type: "group-box", selectable: false, draggable: false, focusable: false } as const
+
+// ── Status-node positions (single source of truth) ────────────────────────────
+
+const snPos: Record<string, { x: number; y: number }> = {
+  "request-submitted":           { x: 200, y: 0    },
+  "translation":                 { x: 50,  y: 140  },
+  "internal-coherence":          { x: 360, y: 140  },
+  "missing-required-data":       { x: 360, y: 260  },
+  "check-available-products":    { x: 360, y: 380  },
+  "inappropriate-requests":      { x: 200, y: 520  },
+  "apply-cat-rules-1":           { x: 50,  y: 660  },
+  "precedence-lookup":           { x: 360, y: 660  },
+  "approval-tier":               { x: 360, y: 780  },
+  "purely-eligible-suppliers":   { x: 200, y: 920  },
+  "restricted-suppliers":        { x: 50,  y: 1060 },
+  "geographical-rules":          { x: 50,  y: 1180 },
+  "evaluate-preferred-supplier": { x: 360, y: 1060 },
+  "apply-cat-rules-2":           { x: 200, y: 1320 },
+  "pricing-calculation":         { x: 200, y: 1460 },
+  "re-evaluate-tier":            { x: 200, y: 1580 },
+  "scoring-ranking":             { x: 200, y: 1720 },
+  "final-check":                 { x: 200, y: 1860 },
+  "done":                        { x: 200, y: 2000 },
+}
+
+// ── Group definitions ─────────────────────────────────────────────────────────
+
+const groupDefs: { id: string; label: string; members: string[] }[] = [
+  { id: "group-box-1", label: "Input Analysis",            members: ["translation","internal-coherence","missing-required-data","check-available-products"] },
+  { id: "group-box-2", label: "Inappropriate Requests",    members: ["inappropriate-requests"] },
+  { id: "group-box-3", label: "Category Rules & Approval", members: ["apply-cat-rules-1","precedence-lookup","approval-tier"] },
+  { id: "group-box-4", label: "Purely Eligible Suppliers", members: ["purely-eligible-suppliers"] },
+  { id: "group-box-5", label: "Supplier Filtering",        members: ["restricted-suppliers","geographical-rules","evaluate-preferred-supplier"] },
+  { id: "group-box-6", label: "Dynamic Category Rules",    members: ["apply-cat-rules-2"] },
+  { id: "group-box-7", label: "Pricing",                   members: ["pricing-calculation","re-evaluate-tier"] },
+  { id: "group-box-8", label: "Scoring & Ranking",         members: ["scoring-ranking"] },
+  { id: "group-box-9", label: "Final Check",               members: ["final-check"] },
+]
+
+function computeGroupBox(members: string[]) {
+  const xs = members.flatMap(id => [snPos[id].x, snPos[id].x + NODE_W])
+  const ys = members.flatMap(id => [snPos[id].y, snPos[id].y + NODE_H])
+  const x = Math.min(...xs) - BOX_PAD
+  const y = Math.min(...ys) - BOX_PAD
+  return { x, y, width: Math.max(...xs) + BOX_PAD - x, height: Math.max(...ys) + 2 * BOX_PAD + 8 - y }
+}
+
+const groupBoxLayout = Object.fromEntries(groupDefs.map(g => [g.id, computeGroupBox(g.members)]))
+const groupBoxData: Record<string, { label: string; width: number; height: number }> = Object.fromEntries(
+  groupDefs.map(g => [g.id, { label: g.label, ...groupBoxLayout[g.id] }])
+)
+
+// ── Node definitions (group boxes first = render behind status nodes) ─────────
 
 const nodeLabels: Record<NodeId, string> = {
   "request-submitted":          "Request Submitted",
   "translation":                "Translation",
   "internal-coherence":         "Internal Coherence",
   "missing-required-data":      "Missing Required Data",
-  "check-available-products":    "Check Available Products",
+  "check-available-products":   "Check Available Products",
   "inappropriate-requests":     "Inappropriate Requests",
   "apply-cat-rules-1":          "Apply Category Rules",
   "approval-tier":              "Approval Tier",
   "precedence-lookup":          "Precedence Lookup",
   "purely-eligible-suppliers":  "Purely Eligible Suppliers",
-  "restricted-suppliers":        "Restricted Suppliers",
-  "geographical-rules":          "Geographical Rules",
-  "evaluate-preferred-supplier": "Evaluate Preferred Supplier",
-  "apply-cat-rules-2":           "Apply Dynamic Category Rules",
+  "restricted-suppliers":       "Restricted Suppliers",
+  "geographical-rules":         "Geographical Rules",
+  "evaluate-preferred-supplier":"Evaluate Preferred Supplier",
+  "apply-cat-rules-2":          "Apply Dynamic Category Rules",
   "pricing-calculation":        "Pricing Calculation",
   "re-evaluate-tier":           "Re-evaluate Tier from Quote",
   "scoring-ranking":            "Scoring and Ranking",
@@ -128,25 +203,12 @@ const nodeLabels: Record<NodeId, string> = {
 }
 
 const nodeDefinitions: Omit<Node, "data">[] = [
-  { id: "request-submitted",         type: "status", position: { x: 200, y: 0    } },
-  { id: "translation",               type: "status", position: { x: 50,  y: 120  } },
-  { id: "internal-coherence",        type: "status", position: { x: 360, y: 120  } },
-  { id: "missing-required-data",     type: "status", position: { x: 360, y: 240  } },
-  { id: "check-available-products",  type: "status", position: { x: 360, y: 360  } },
-  { id: "inappropriate-requests",    type: "status", position: { x: 200, y: 500  } },
-  { id: "apply-cat-rules-1",         type: "status", position: { x: 50,  y: 640  } },
-  { id: "precedence-lookup",         type: "status", position: { x: 360, y: 640  } },
-  { id: "approval-tier",             type: "status", position: { x: 360, y: 760  } },
-  { id: "purely-eligible-suppliers",   type: "status", position: { x: 200, y: 900  } },
-  { id: "restricted-suppliers",        type: "status", position: { x: 50,  y: 1020 } },
-  { id: "geographical-rules",          type: "status", position: { x: 50,  y: 1140 } },
-  { id: "evaluate-preferred-supplier", type: "status", position: { x: 360, y: 1020 } },
-  { id: "apply-cat-rules-2",           type: "status", position: { x: 200, y: 1280 } },
-  { id: "pricing-calculation",         type: "status", position: { x: 200, y: 1400 } },
-  { id: "re-evaluate-tier",            type: "status", position: { x: 200, y: 1520 } },
-  { id: "scoring-ranking",             type: "status", position: { x: 200, y: 1640 } },
-  { id: "final-check",                 type: "status", position: { x: 200, y: 1760 } },
-  { id: "done",                        type: "status", position: { x: 200, y: 1880 } },
+  { id: "request-submitted", type: "status", position: snPos["request-submitted"] },
+  ...groupDefs.flatMap(g => [
+    { id: g.id, ...gbProps, position: { x: groupBoxLayout[g.id].x, y: groupBoxLayout[g.id].y } },
+    ...g.members.map(id => ({ id, type: "status", position: snPos[id] })),
+  ]),
+  { id: "done", type: "status", position: snPos["done"] },
 ]
 
 const edges: Edge[] = [
@@ -465,6 +527,10 @@ export function PipelineGraphView({
 
   const nodes = useMemo<Node[]>(() =>
     nodeDefinitions.map((def) => {
+      if (def.type === "group-box") {
+        const gb = groupBoxData[def.id] ?? { label: "", width: 0, height: 0 }
+        return { ...def, data: { label: gb.label, width: gb.width, height: gb.height } }
+      }
       const id     = def.id as NodeId
       const status = nodeStatuses[id] ?? "outstanding"
       return {
