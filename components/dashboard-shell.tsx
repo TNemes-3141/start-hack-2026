@@ -40,7 +40,7 @@ function AppSidebar({ role }: { role?: Role }) {
             <Building2 className="h-5 w-5" />
           </div>
           {state === "expanded" && (
-            <span className="font-semibold text-sm">ProcureAI</span>
+            <span className="font-semibold text-sm">Penrose</span>
           )}
         </div>
       </SidebarHeader>
