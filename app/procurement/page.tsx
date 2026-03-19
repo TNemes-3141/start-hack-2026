@@ -1,16 +1,14 @@
+"use client"
+
 import { User, ShoppingCart, Tag, TrendingUp, Briefcase } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { selectRole } from "@/app/actions"
 import type { Role } from "@/lib/session"
+import Dither from "@/components/Dither"
+import Dot from "@/components/animata/background/dot"
 
 const roles: { role: Role; label: string; description: string; icon: React.ReactNode }[] = [
-  {
-    role: "client",
-    label: "Client",
-    description: "Submit and track your procurement requests.",
-    icon: <User className="h-6 w-6" />,
-  },
   {
     role: "procurement",
     label: "Procurement",
@@ -39,8 +37,23 @@ const roles: { role: Role; label: string; description: string; icon: React.React
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <Card className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background">
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <Dot className="absolute inset-0 opacity-15" spacing={30} />
+        <Dither
+          waveColor={[0.5, 0.5, 0.5]}
+          disableAnimation={false}
+          enableMouseInteraction
+          mouseRadius={0.3}
+          colorNum={4}
+          waveAmplitude={0.3}
+          waveFrequency={3}
+          waveSpeed={0.05}
+          className="absolute inset-0 opacity-15"
+        />
+      </div>
+
+      <Card className="relative z-10 w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Select your role</CardTitle>
           <CardDescription>Choose how you want to access the dashboard.</CardDescription>

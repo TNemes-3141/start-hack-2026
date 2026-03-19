@@ -156,10 +156,7 @@ export default function ClientPage() {
     async function loadOptions() {
       try {
         const response = await fetch("/api/client/options");
-        if (!response.ok) {
-          return;
-        }
-
+        if (!response.ok) return;
         const payload = (await response.json()) as FormOptions;
         setFormOptions(payload);
       } catch {
@@ -168,6 +165,22 @@ export default function ClientPage() {
     }
 
     void loadOptions();
+  }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("parsed_request");
+    if (!stored) return;
+    localStorage.removeItem("parsed_request");
+    try {
+      const parsed = JSON.parse(stored) as ClientRequestForm;
+      setForm(parsed);
+      setHasExtractionResult(true);
+      setShowPromptCard(false);
+      setShowResultCard(true);
+      setIsResultVisible(true);
+    } catch {
+      // ignore malformed data
+    }
   }, []);
 
   function handleThemeToggle() {
@@ -333,7 +346,11 @@ export default function ClientPage() {
                   Missing fields: {missingFields.join(", ")}
                 </p>
               </>
-            ) : null}
+            ) : (
+              <p className="rounded-md border border-border bg-muted p-3 text-sm text-foreground">
+                All required information is present. Press Submit Request to continue.
+              </p>
+            )}
 
             <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
               <h2 className="mb-5 text-xl font-semibold">Structured Request Form</h2>

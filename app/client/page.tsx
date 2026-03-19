@@ -1,9 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Check, ChevronDown, SendHorizontal } from "lucide-react";
 import Dither from "@/components/Dither";
 import Dot from "@/components/animata/background/dot";
+import { type RequestInterpretation, FIELD_LABELS } from "@/lib/request-data";
+import { RequestStoreProvider, useRequestStore } from "@/lib/request-store";
+// core_agent is invoked via startPipeline from the store
 
 type ClientRequestForm = {
   request_language: string;
@@ -69,28 +73,6 @@ const EMPTY_OPTIONS: FormOptions = {
   currency_options: [],
 };
 
-const FIELD_LABELS: Record<keyof ClientRequestForm, string> = {
-  request_language: "Request Language",
-  business_unit: "Business Unit",
-  country: "Country",
-  city: "City",
-  requester_id: "Requester ID",
-  requester_role: "Requester Role",
-  category_l1: "Category (L1)",
-  category_l2: "Category (L2)",
-  title: "Request Title",
-  request_text: "Request Details",
-  currency: "Currency",
-  budget_amount: "Budget Amount",
-  quantity: "Quantity",
-  unit_of_measure: "Unit of Measure",
-  required_by_date: "Required By Date",
-  preferred_supplier_mentioned: "Preferred Supplier Mentioned",
-  incumbent_supplier: "Incumbent Supplier",
-  contract_type_requested: "Contract Type Requested",
-  delivery_countries: "Delivery Countries",
-  esg_requirement: "ESG Requirement",
-};
 
 const REQUIRED_FIELDS: Array<keyof ClientRequestForm> = [
   "request_language",
@@ -116,6 +98,16 @@ const REQUIRED_FIELDS: Array<keyof ClientRequestForm> = [
 const CONTRACT_TYPE_OPTIONS = ["purchase", "sell"];
 
 export default function ClientPage() {
+  return (
+    <RequestStoreProvider>
+      <ClientPageContent />
+    </RequestStoreProvider>
+  );
+}
+
+function ClientPageContent() {
+  const router = useRouter();
+  const { startPipeline } = useRequestStore();
   const [prompt, setPrompt] = useState("");
   const [form, setForm] = useState<ClientRequestForm>(EMPTY_FORM);
   const [isLoading, setIsLoading] = useState(false);
@@ -243,6 +235,11 @@ export default function ClientPage() {
     }
   }
 
+  function handleSubmit() {
+    startPipeline(form as RequestInterpretation);
+    router.push("/dashboard/request");
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-background text-foreground transition-colors">
       <div className="pointer-events-none absolute inset-0 z-0">
@@ -326,7 +323,7 @@ export default function ClientPage() {
           </div>
         ) : null}
 
-        {showResultCard && hasExtractionResult && hasMissingInfo ? (
+        {showResultCard && hasExtractionResult ? (
           <section
             className={`space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 ease-out ${
               isResultVisible
@@ -334,13 +331,21 @@ export default function ClientPage() {
                 : "translate-y-1 scale-[0.99] opacity-0"
             }`}
           >
-            <div className="rounded-md border border-border bg-muted p-3 text-sm text-foreground">
-              We are missing some required information. Please review and complete
-              the fields below.
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Missing fields: {missingFields.join(", ")}
-            </p>
+            {hasMissingInfo ? (
+              <>
+                <div className="rounded-md border border-border bg-muted p-3 text-sm text-foreground">
+                  We are missing some required information. Please review and complete
+                  the fields below.
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Missing fields: {missingFields.join(", ")}
+                </p>
+              </>
+            ) : (
+              <p className="rounded-md border border-border bg-muted p-3 text-sm text-foreground">
+                All required information is present. Press Submit Request to continue.
+              </p>
+            )}
 
             <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
               <h2 className="mb-5 text-xl font-semibold">Structured Request Form</h2>
@@ -509,23 +514,21 @@ export default function ClientPage() {
                   className="w-full rounded-md border border-input bg-background p-3 text-sm text-foreground focus:border-ring focus:outline-none"
                 />
               </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={hasMissingInfo}
+                  className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {"Submit Request"}
+                </button>
+              </div>
             </div>
           </section>
         ) : null}
 
-        {showResultCard && hasExtractionResult && !hasMissingInfo ? (
-          <section
-            className={`rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 ease-out ${
-              isResultVisible
-                ? "translate-y-0 scale-100 opacity-100"
-                : "translate-y-1 scale-[0.99] opacity-0"
-            }`}
-          >
-            <p className="text-sm text-foreground">
-              Thanks. We have all required information from your request.
-            </p>
-          </section>
-        ) : null}
       </div>
     </main>
   );
