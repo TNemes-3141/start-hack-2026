@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { createRequestData, mergeRequestData, type RequestData, type RequestInterpretation } from "@/lib/request-data";
+import { createRequestData, mergeRequestData, type RequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
 import { core_agent } from "@/lib/core-agent";
 
 export default function TestCorePage() {
@@ -25,13 +25,8 @@ export default function TestCorePage() {
     reader.readAsText(file);
   }
 
-  function handleUpdate(_node: string, patch: Partial<RequestData>) {
-    console.log("[node update] patch received:", patch);
-    setRequestData((prev) => {
-      const next = mergeRequestData(prev, patch);
-      console.log("[node update] request_data after merge:", next);
-      return next;
-    });
+  function handleUpdate(_node: string, patch: RequestDataPatch) {
+    setRequestData((prev) => mergeRequestData(prev, patch));
   }
 
   return (
