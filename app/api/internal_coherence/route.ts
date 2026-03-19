@@ -3,65 +3,107 @@ import { NextRequest, NextResponse } from "next/server";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const PROMPT = `You are an internal coherence checker in a procurement pipeline.
+const PROMPT = `You are a strict internal coherence checker in a procurement pipeline.
 
-You will receive a procurement request JSON. Your sole task is to check whether the values of specific structured fields are consistent with the free-text "request_text" field. You must NOT evaluate policy, budget reasonableness, or anything else.
+Your ONLY job is to check whether specific structured fields contradict the free-text "request_text". You must NOT evaluate policy, feasibility, budget reasonableness, supplier suitability, or anything outside the scope below.
 
-For each of the following fields, produce exactly one reasoning entry:
+---
+
+FIELDS TO CHECK (produce exactly one entry per field, in this order):
   category_l1, category_l2, currency, budget_amount, quantity, unit_of_measure, required_by_date, preferred_supplier_mentioned
 
-For each field, determine one of three statuses:
-  - "succeeded"    — the field value is consistent with what request_text says (or does not contradict it)
-  - "not_present"  — request_text does not mention anything that allows you to verify this field
-  - "failed"       — there is clear, direct contradiction between the field value and request_text
+---
 
-Only mark "failed" when there is explicit, unambiguous evidence of contradiction in request_text. When in doubt, use "succeeded" or "not_present".
+STATUS RULES — read these carefully:
 
-Return a JSON object with exactly these fields:
+"succeeded"
+  → The field value matches or is consistent with what request_text explicitly states.
+  → Also use this when request_text mentions the topic but does not contradict the field value.
+
+"not_present"
+  → request_text contains NO information about this field.
+  → The field value may be plausible, implausible, high, or low — it does not matter.
+     If request_text is silent on the topic, the answer is ALWAYS "not_present", never "failed".
+
+"failed"
+  → request_text contains an EXPLICIT value or statement that DIRECTLY contradicts the field value.
+  → Example of a valid "failed": budget_amount = 50000 but request_text says "my budget is 30,000 EUR".
+  → Example of an INVALID "failed": budget_amount = 1200 and request_text mentions high-end equipment
+     but gives no explicit budget figure — this is "not_present", NOT "failed".
+  → Example of an INVALID "failed": quantity = 5 and request_text never mentions a number
+     — this is "not_present", NOT "failed".
+
+CRITICAL: "failed" requires a direct quote or paraphrase from request_text that contradicts the field.
+If you cannot point to explicit text that states a conflicting value, do NOT use "failed".
+
+---
+
+OUTPUT FORMAT — return ONLY this JSON, nothing else:
 {
   "reasonings": [
     {
-      "step_id": "R-001",
       "aspect": "<field_name> [<status>]",
-      "reasoning": "<one sentence explaining why you assigned this status>"
+      "reasoning": "<one sentence: either quote the contradicting text, or explain why the field is not mentioned>"
     }
-  ],
-  "issues": [],
-  "escalations": [],
-  "policy_violations": []
-}
+  ]
+}`;
 
-If at least one field has status "failed", add a single blocking issue to the "issues" array:
-{
-  "issue_id": "ISS-001",
-  "trigger": "<comma-separated list of failed field names>",
-  "escalate_to": "Procurement",
-  "blocking": true,
-  "severity": "high"
+interface Reasoning {
+  step_id: string;
+  aspect: string;
+  reasoning: string;
 }
-
-Return only valid JSON. No explanation or text outside the JSON object.`;
 
 export async function POST(req: NextRequest) {
   const body: unknown = await req.json();
   console.log("[internal_coherence] checking interpretation:", JSON.stringify(body).slice(0, 300));
 
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o",
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: PROMPT },
-      { role: "user", content: JSON.stringify(body) },
-    ],
+  const today = new Date().toISOString().slice(0, 10);
+  const completion = await client.responses.create({
+    model: "gpt-5-mini",
+    reasoning: { effort: "low" },
+    input: `${PROMPT}\n\nToday's date is ${today}. Use this to resolve relative date expressions in request_text (e.g. "end of next week", "in two weeks", "by Friday") to a concrete date before comparing against required_by_date.\n\nProcurement request:\n${JSON.stringify(body)}`,
   });
 
-  const result = JSON.parse(completion.choices[0].message.content ?? "{}");
-  const issues: { issue_id: string; trigger: string; blocking: boolean }[] = result?.issues ?? [];
-  const reasonings: { aspect: string }[] = result?.reasonings ?? [];
-  const failed = reasonings.filter((r) => r.aspect?.includes("[failed]"));
-  console.log(`[internal_coherence] ${reasonings.length} field(s) checked, ${failed.length} failed`);
+  const raw = JSON.parse(completion.output_text ?? "{}");
+  const rawReasonings: Omit<Reasoning, "step_id">[] = raw?.reasonings ?? [];
+
+  // Assign sequential step_ids regardless of what the model returned
+  const reasonings: Reasoning[] = rawReasonings.map((r, i) => ({
+    step_id: `R-${String(i + 1).padStart(3, "0")}`,
+    aspect: r.aspect,
+    reasoning: r.reasoning,
+  }));
+
+  // Derive failed fields from aspect strings
+  const failedFields = reasonings
+    .filter((r) => r.aspect?.includes("[failed]"))
+    .map((r) => r.aspect.replace(/\s*\[.*$/, "").trim());
+
+  // Statically generate the issue object if any field failed
+  const issues =
+    failedFields.length > 0
+      ? [
+          {
+            issue_id: "ISS-001",
+            trigger: failedFields.join(", "),
+            description: `Contradiction detected between request_text and structured field(s): ${failedFields.join(", ")}`,
+            escalate_to: "Procurement",
+            blocking: true,
+            severity: "high",
+          },
+        ]
+      : [];
+
+  console.log(`[internal_coherence] ${reasonings.length} field(s) checked, ${failedFields.length} failed`);
   if (issues.length > 0) {
-    console.log(`[internal_coherence] blocking issue raised:`, issues.map((i) => i.trigger));
+    console.log(`[internal_coherence] blocking issue raised:`, failedFields);
   }
-  return NextResponse.json(result);
+
+  return NextResponse.json({
+    reasonings,
+    issues,
+    escalations: [],
+    policy_violations: [],
+  });
 }
