@@ -533,7 +533,6 @@ export default function ClientPage() {
             </div>
           </section>
         ) : null}
-
       </div>
     </main>
   );
