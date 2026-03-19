@@ -1,5 +1,11 @@
-import { createRequestData, mergeRequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
+import { createRequestData, mergeRequestData, type RequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
 import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall, approvalTierCall, purelyEligibleSuppliersCall } from "@/lib/api-calls";
+
+function hasBlocking(data: RequestData): boolean {
+  return Object.values(data.stages).some(
+    (stage) => stage.issues.some((i) => i.blocking) || stage.escalations.some((e) => e.blocking)
+  );
+}
 
 export async function core_agent(
   uploadedJson: RequestInterpretation,
@@ -17,20 +23,47 @@ export async function core_agent(
     };
   }
 
-  // --- Parallel: translate + internal coherence + missing data + product availability + inappropriate check + precedence ---
+  function abort(after: string) {
+    console.log(`[core_agent] pipeline aborted after ${after} — blocking issue or escalation detected`);
+  }
+
+  // ── Group 1 (parallel) ────────────────────────────────────────────────────
+  // Branch A: translate
+  // Branch B: internalCoherence → missingRequiredData → checkAvailableProducts (sequential)
   await Promise.all([
     translateCall(interp.request_text ?? "").then(namedUpdate("translation")),
-    internalCoherenceCall(interp).then(namedUpdate("internal_coherence")),
-    missingRequiredDataCall(interp).then(namedUpdate("missing_required_data")),
-    checkAvailableProductsCall(interp).then(namedUpdate("check_available_products")),
-    inappropriateRequestsCall(interp).then(namedUpdate("inappropriate_requests")),
-    precedenceLookupCall(interp).then(namedUpdate("precedence_lookup")),
+    (async () => {
+      await internalCoherenceCall(interp).then(namedUpdate("internal_coherence"));
+      if (hasBlocking(currentData)) return;
+      await missingRequiredDataCall(interp).then(namedUpdate("missing_required_data"));
+      if (hasBlocking(currentData)) return;
+      await checkAvailableProductsCall(interp).then(namedUpdate("check_available_products"));
+    })(),
+  ]);
+
+  if (hasBlocking(currentData)) { abort("group 1"); return currentData; }
+
+  // ── inappropriateRequests ─────────────────────────────────────────────────
+  await inappropriateRequestsCall(interp).then(namedUpdate("inappropriate_requests"));
+  if (hasBlocking(currentData)) { abort("inappropriate_requests"); return currentData; }
+
+  // ── Group 2 (parallel) ────────────────────────────────────────────────────
+  // Branch A: precedenceLookup → approvalTier (sequential)
+  // Branch B: applyStaticCategoryRules
+  await Promise.all([
+    (async () => {
+      await precedenceLookupCall(interp).then(namedUpdate("precedence_lookup"));
+      if (hasBlocking(currentData)) return;
+      await approvalTierCall(currentData).then(namedUpdate("approval_tier"));
+    })(),
     applyStaticCategoryRulesCall(interp).then(namedUpdate("apply_category_rules")),
   ]);
 
-  // --- Sequential: approval tier (needs full accumulated context) ---
-  await approvalTierCall(currentData).then(namedUpdate("approval_tier"));
+  if (hasBlocking(currentData)) { abort("group 2"); return currentData; }
+
+  // ── purelyEligibleSuppliers ───────────────────────────────────────────────
   await purelyEligibleSuppliersCall(currentData.request_interpretation).then(namedUpdate("purely_eligible_suppliers"));
 
   console.log("[core_agent] final RequestData:", JSON.stringify(currentData, null, 2));
+  return currentData;
 }
