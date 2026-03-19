@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 import Dither from '@/components/Dither';
 import Dot from "@/components/animata/background/dot";
 import AbstractShape from "@/components/animata/abstract-shape";
-import image0 from "@/public/images/image0.png"
-import image1 from "@/public/images/image1.png"
-import image2 from "@/public/images/image2.png"
 import Image from "next/image";
 import Link from "next/link";
 
 export default function LandingPage() {
   const carouselTrackRef = useRef<HTMLDivElement>(null);
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true) }, []);
 
   useEffect(() => {
     let rafId = 0;
@@ -45,10 +46,11 @@ export default function LandingPage() {
     };
   }, []);
 
+  const folder = mounted && resolvedTheme === "dark" ? "dark" : "light";
   const carouselImages = [
-    { src: image1, alt: "Dashboard preview 1" },
-    { src: image2, alt: "Dashboard preview 2" },
-    { src: image0, alt: "Dashboard preview 3" },
+    { src: `/images/${folder}/image1.png`, alt: "Dashboard preview 1" },
+    { src: `/images/${folder}/image2.png`, alt: "Dashboard preview 2" },
+    { src: `/images/${folder}/image0.png`, alt: "Dashboard preview 3" },
   ];
 
   return (
@@ -69,13 +71,12 @@ export default function LandingPage() {
       </div>
 
       <main className="relative z-10 mx-auto grid min-h-screen w-full grid-cols-1 items-center p-8 text-center lg:grid-cols-12 lg:grid-rows-12">
-        <h1 className="w-full max-w-4xl text-left text-[7vw] text font-medium leading-none lg:col-start-1 lg:col-span-8 lg:row-start-1 lg:row-span-5 lg:self-start">
-          PENROSE PROCUREMENT
+        <h1 className="w-full max-w-4xl text-left text-[9vw] text font-medium leading-none lg:col-start-1 lg:col-span-8 lg:row-start-1 lg:row-span-5 lg:self-start">
+          PENROSE PROCURE
         </h1>
         <p className="w-full text-justify max-w-3xl text-sm text-muted-foreground sm:text-base lg:col-start-9 lg:col-span-4 lg:row-start-7 lg:row-span-2 lg:self-end pb-10">
-          Penrose Function turns market complexity into clarity, combining data,
-          context, and intelligent analysis so you can move from research to
-          confident decisions faster.
+          Penrose Procure automates procurement management and aids procurement auditing using a multi agentic model.
+          Benefit from faster procurement services, more reliable auditing, and ease of use.
         </p>
         <nav className="text-xl flex justify-between lg:col-start-9 lg:col-span-4 lg:row-start-1 lg:row-span-1 pr-14 z-10">
           <Link href="/" className="underline underline-offset-5">Home</Link>
