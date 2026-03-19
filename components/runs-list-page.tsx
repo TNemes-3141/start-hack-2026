@@ -43,13 +43,13 @@ function timeAgo(iso: string): string {
 type StatusMeta = { label: string; dot: string; badge: "default" | "secondary" | "destructive" | "outline"; bar: string }
 
 function getStatusMeta(status: string): StatusMeta {
-  if (status === "done")             return { label: "Completed",          dot: "bg-emerald-500",            badge: "default",     bar: "bg-emerald-500" }
-  if (status === "aborted")          return { label: "Aborted",            dot: "bg-red-500",                badge: "destructive", bar: "bg-red-500" }
-  if (status === "blocked")          return { label: "Approval Required",  dot: "bg-amber-500 animate-pulse", badge: "destructive", bar: "bg-amber-500" }
-  if (status === "idle")             return { label: "Idle",               dot: "bg-muted-foreground/40",    badge: "outline",     bar: "bg-muted-foreground/30" }
-  if (status.endsWith("_active"))    return { label: "Running",            dot: "bg-blue-500 animate-pulse",  badge: "secondary",   bar: "bg-blue-500" }
-  if (status.endsWith("_complete"))  return { label: "In Progress",        dot: "bg-sky-400",                badge: "secondary",   bar: "bg-sky-400" }
-  return                                    { label: status,               dot: "bg-muted-foreground/40",    badge: "outline",     bar: "bg-muted-foreground/30" }
+  if (status === "done")             return { label: "Completed",          dot: "bg-emerald-400 shadow-[0_0_6px_1px_rgba(52,211,153,0.6)]", badge: "default",     bar: "bg-gradient-to-b from-emerald-400 to-emerald-600" }
+  if (status === "aborted")          return { label: "Aborted",            dot: "bg-rose-500",                                              badge: "destructive", bar: "bg-gradient-to-b from-rose-400 to-rose-600" }
+  if (status === "blocked")          return { label: "Approval Required",  dot: "bg-amber-400 animate-pulse shadow-[0_0_6px_1px_rgba(252,211,77,0.6)]", badge: "destructive", bar: "bg-gradient-to-b from-amber-400 to-amber-600" }
+  if (status === "idle")             return { label: "Idle",               dot: "bg-muted-foreground/40",                                   badge: "outline",     bar: "bg-muted-foreground/20" }
+  if (status.endsWith("_active"))    return { label: "Running",            dot: "bg-indigo-400 animate-pulse shadow-[0_0_6px_1px_rgba(129,140,248,0.6)]", badge: "secondary",   bar: "bg-gradient-to-b from-indigo-400 to-indigo-600" }
+  if (status.endsWith("_complete"))  return { label: "In Progress",        dot: "bg-cyan-400 shadow-[0_0_5px_1px_rgba(34,211,238,0.5)]",    badge: "secondary",   bar: "bg-gradient-to-b from-cyan-400 to-cyan-600" }
+  return                                    { label: status,               dot: "bg-muted-foreground/40",                                   badge: "outline",     bar: "bg-muted-foreground/20" }
 }
 
 function countIssues(run: RunRow) {
@@ -119,9 +119,9 @@ function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="group w-full text-left flex items-stretch hover:bg-accent/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group w-full text-left flex items-stretch hover:bg-accent/40 dark:hover:bg-accent/20 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className={`w-0.5 shrink-0 ${bar} opacity-60 group-hover:opacity-100 transition-opacity`} />
+      <div className={`w-1 shrink-0 ${bar} opacity-50 group-hover:opacity-100 transition-opacity rounded-r-full`} />
 
       <div className="flex-1 flex items-start justify-between gap-4 px-5 py-4">
         <div className="flex-1 min-w-0 space-y-1.5">
@@ -228,7 +228,7 @@ function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
   }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/80 backdrop-blur shrink-0">
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/80 glass shrink-0">
       <button
         onClick={onBack}
         className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -514,9 +514,9 @@ export function RunsListPage({
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background/80 glass shrink-0">
         <div>
-          <h1 className="text-base font-semibold text-foreground">{pageTitle}</h1>
+          <h1 className="text-base font-semibold text-foreground tracking-tight">{pageTitle}</h1>
           {!loading && (
             <p className="text-xs text-muted-foreground mt-0.5">
               {runs.length} request{runs.length !== 1 ? "s" : ""}
@@ -526,7 +526,7 @@ export function RunsListPage({
         <button
           onClick={() => void fetchRuns()}
           disabled={loading}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200 disabled:opacity-40"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Refresh

@@ -74,32 +74,59 @@ function ElapsedTimer({ startedAt }: { startedAt: number }) {
 
 // ── Status node ───────────────────────────────────────────────────────────────
 
-export const statusConfig: Record<PipelineNodeStatus, { icon: React.ReactNode; border: string }> = {
-  outstanding: { icon: <Clock className="h-4 w-4 text-muted-foreground" />, border: "border-border" },
-  working:     { icon: <Loader2 className="h-4 w-4 animate-spin text-sky-600 dark:text-sky-400" />, border: "border-sky-600/60 dark:border-sky-400/60" },
-  warning:     { icon: <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />, border: "border-amber-600/60 dark:border-amber-400/60" },
-  escalation:  { icon: <XCircle className="h-4 w-4 text-destructive" />, border: "border-destructive/70" },
-  done:        { icon: <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />, border: "border-emerald-600/60 dark:border-emerald-400/60" },
+export const statusConfig: Record<PipelineNodeStatus, { icon: React.ReactNode; border: string; bg: string; shadow: string }> = {
+  outstanding: {
+    icon: <Clock className="h-4 w-4 text-slate-400" />,
+    border: "border-border",
+    bg: "bg-card",
+    shadow: "",
+  },
+  working: {
+    icon: <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />,
+    border: "border-indigo-500/70 dark:border-indigo-400/60",
+    bg: "bg-indigo-50 dark:bg-indigo-950/40",
+    shadow: "shadow-[0_0_18px_-4px_rgba(99,102,241,0.55)] dark:shadow-[0_0_22px_-4px_rgba(129,140,248,0.6)]",
+  },
+  warning: {
+    icon: <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />,
+    border: "border-amber-500/70 dark:border-amber-400/60",
+    bg: "bg-amber-50 dark:bg-amber-950/30",
+    shadow: "shadow-[0_0_16px_-4px_rgba(245,158,11,0.45)] dark:shadow-[0_0_20px_-4px_rgba(252,211,77,0.5)]",
+  },
+  escalation: {
+    icon: <XCircle className="h-4 w-4 text-rose-500 dark:text-rose-400" />,
+    border: "border-rose-500/70 dark:border-rose-400/60",
+    bg: "bg-rose-50 dark:bg-rose-950/30",
+    shadow: "shadow-[0_0_18px_-4px_rgba(225,29,72,0.45)] dark:shadow-[0_0_22px_-4px_rgba(244,114,182,0.5)]",
+  },
+  done: {
+    icon: <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />,
+    border: "border-emerald-500/60 dark:border-emerald-400/60",
+    bg: "bg-emerald-50 dark:bg-emerald-950/30",
+    shadow: "shadow-[0_0_14px_-4px_rgba(5,150,105,0.4)] dark:shadow-[0_0_18px_-4px_rgba(52,211,153,0.45)]",
+  },
 }
 
 function StatusNode({ data }: NodeProps) {
   const status    = (data.status    as PipelineNodeStatus) ?? "outstanding"
   const startedAt = data.startedAt  as number | undefined
-  const { icon, border } = statusConfig[status]
+  const { icon, border, bg, shadow } = statusConfig[status]
   return (
     <div
-      className={`rounded-md border-2 bg-card text-card-foreground px-3 py-2 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${border}`}
+      className={`rounded-lg border-2 text-card-foreground px-3.5 py-2.5 cursor-pointer transition-all duration-200 hover:scale-[1.02] ${border} ${bg} ${shadow}`}
       style={{ width: NODE_W }}
     >
-      <Handle type="target" position={Position.Top} className="bg-border! border-border!" />
+      <Handle type="target" position={Position.Top} className="!bg-border !border-background opacity-60" />
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium">{data.label as string}</span>
+        <span className="text-sm font-semibold tracking-tight text-foreground">{data.label as string}</span>
         {icon}
       </div>
       {status === "working" && startedAt !== undefined && (
-        <div className="mt-1"><ElapsedTimer startedAt={startedAt} /></div>
+        <div className="mt-1 border-t border-border/50 pt-1">
+          <ElapsedTimer startedAt={startedAt} />
+        </div>
       )}
-      <Handle type="source" position={Position.Bottom} className="bg-border! border-border!" />
+      <Handle type="source" position={Position.Bottom} className="!bg-border !border-background opacity-60" />
     </div>
   )
 }
@@ -108,11 +135,11 @@ function GroupBoxNode({ data }: NodeProps) {
   const label = data.label as string | undefined
   return (
     <div
-      className="relative rounded-lg border-2 border-dashed border-border bg-muted/30 pointer-events-none overflow-visible"
+      className="relative rounded-xl border border-border/60 bg-muted/20 dark:bg-muted/10 pointer-events-none overflow-visible backdrop-blur-sm"
       style={{ width: data.width as number, height: data.height as number }}
     >
       {label && (
-        <span className="absolute -top-6 left-0 text-[11px] font-semibold text-foreground/60 uppercase tracking-widest select-none whitespace-nowrap">
+        <span className="absolute -top-5 left-2 text-[10px] font-bold text-primary/70 uppercase tracking-[0.15em] select-none whitespace-nowrap bg-background/80 dark:bg-background/50 px-1.5 py-0.5 rounded-md">
           {label}
         </span>
       )}
@@ -669,7 +696,7 @@ export function PipelineGraphView({
           )}
         </div>
       )}
-      <div className="flex-1 rounded-lg border border-border bg-background min-h-0">
+      <div className="flex-1 rounded-xl border border-border bg-background min-h-0 overflow-hidden shadow-inner">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -684,8 +711,8 @@ export function PipelineGraphView({
           zoomOnScroll={false}
           zoomActivationKeyCode="Control"
         >
-          <Background color="var(--border)" gap={24} />
-          <Controls showInteractive={false} />
+          <Background color="var(--border)" gap={20} size={1} />
+          <Controls showInteractive={false} className="rounded-lg shadow-md border border-border" />
         </ReactFlow>
       </div>
       <NodeDetailPanel

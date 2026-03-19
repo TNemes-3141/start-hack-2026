@@ -155,14 +155,14 @@ function getAllPolicyViolations(run: RunRow) {
 
 // ── Score bar ──────────────────────────────────────────────────────────────────
 
-function ScoreBar({ value, max = 100, color = "bg-emerald-500" }: { value: number; max?: number; color?: string }) {
+function ScoreBar({ value, max = 100, color = "from-emerald-400 to-emerald-600" }: { value: number; max?: number; color?: string }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      <div className="h-2 flex-1 rounded-full bg-muted/60 overflow-hidden">
+        <div className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs tabular-nums text-muted-foreground w-8 text-right">{Math.round(value)}</span>
+      <span className="text-xs tabular-nums text-muted-foreground w-8 text-right font-medium">{Math.round(value)}</span>
     </div>
   )
 }
@@ -177,18 +177,18 @@ function Section({ title, icon: Icon, children, defaultOpen = true }: {
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div className="border border-border rounded-xl overflow-hidden shadow-sm">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3 bg-muted/20 hover:bg-accent/40 transition-all duration-200 text-left"
       >
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold text-foreground">{title}</span>
+        <div className="flex items-center gap-2.5">
+          <Icon className="h-4 w-4 text-primary/70" />
+          <span className="text-sm font-semibold text-foreground tracking-tight">{title}</span>
         </div>
         {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
       </button>
-      {open && <div className="p-4">{children}</div>}
+      {open && <div className="p-4 border-t border-border/50">{children}</div>}
     </div>
   )
 }
@@ -247,9 +247,9 @@ function EscalationReportCard({
   const actionBusy = resolving || aborting
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <div className="rounded-xl border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/20 overflow-hidden">
       {/* ── Card header ── */}
-      <div className="px-6 py-4 border-b border-border bg-destructive/5">
+      <div className="px-6 py-4 border-b border-border bg-gradient-to-r from-destructive/8 to-rose-500/5 dark:from-destructive/15 dark:to-rose-900/10">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -454,8 +454,8 @@ function EscalationReportCard({
         {tier && (
           <Section title="Approval Tier" icon={TrendingUp} defaultOpen={true}>
             <div className="flex items-start gap-4 flex-wrap">
-              <div className="flex items-center justify-center h-12 w-12 rounded-xl border-2 border-primary/30 bg-primary/5 shrink-0">
-                <span className="text-lg font-bold text-primary">T{tier.tier_number}</span>
+              <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/30 shrink-0">
+                <span className="text-lg font-bold text-white">T{tier.tier_number}</span>
               </div>
               <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
@@ -539,26 +539,26 @@ function EscalationReportCard({
                     {s.quality_score != null && (
                       <div>
                         <p className="text-[10px] text-muted-foreground mb-0.5">Quality</p>
-                        <ScoreBar value={s.quality_score} color="bg-emerald-500" />
+                        <ScoreBar value={s.quality_score} color="from-emerald-400 to-emerald-600" />
                       </div>
                     )}
                     {s.risk_score != null && (
                       <div>
                         <p className="text-[10px] text-muted-foreground mb-0.5">Risk (lower better)</p>
-                        <ScoreBar value={100 - s.risk_score} color="bg-blue-500" />
+                        <ScoreBar value={100 - s.risk_score} color="from-indigo-400 to-indigo-600" />
                       </div>
                     )}
                     {s.esg_score != null && (
                       <div>
                         <p className="text-[10px] text-muted-foreground mb-0.5">ESG</p>
-                        <ScoreBar value={s.esg_score} color="bg-teal-500" />
+                        <ScoreBar value={s.esg_score} color="from-cyan-400 to-teal-600" />
                       </div>
                     )}
                   </div>
                   {s.ranking_score > 0 && (
                     <div className="mt-1.5">
                       <p className="text-[10px] text-muted-foreground mb-0.5">Composite Score</p>
-                      <ScoreBar value={s.ranking_score} color={s.rank === 1 ? "bg-emerald-500" : "bg-muted-foreground"} />
+                      <ScoreBar value={s.ranking_score} color={s.rank === 1 ? "from-emerald-400 to-emerald-600" : "from-slate-400 to-slate-600"} />
                     </div>
                   )}
                   <div className="mt-2 flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
@@ -784,9 +784,9 @@ export function EscalationReportPage({
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background/80 glass shrink-0">
         <div>
-          <h1 className="text-base font-semibold text-foreground">My Escalations</h1>
+          <h1 className="text-base font-semibold text-foreground tracking-tight">My Escalations</h1>
           {!loading && (
             <p className="text-xs text-muted-foreground mt-0.5">
               {runs.length} escalated request{runs.length !== 1 ? "s" : ""} requiring your attention
@@ -796,7 +796,7 @@ export function EscalationReportPage({
         <button
           onClick={() => void fetchRuns()}
           disabled={loading}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200 disabled:opacity-40"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Refresh

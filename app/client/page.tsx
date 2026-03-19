@@ -374,17 +374,17 @@ function ClientPageContent() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-background text-foreground transition-colors">
       <div className="pointer-events-none absolute inset-0 z-0">
-        <Dot className="absolute inset-0 opacity-15" spacing={30} />
+        <Dot className="absolute inset-0 opacity-20" spacing={28} />
         <Dither
-          waveColor={[0.5, 0.5, 0.5]}
+          waveColor={[0.3, 0.27, 0.9]}
           disableAnimation={false}
           enableMouseInteraction
-          mouseRadius={0.3}
-          colorNum={4}
-          waveAmplitude={0.3}
+          mouseRadius={0.35}
+          colorNum={5}
+          waveAmplitude={0.4}
           waveFrequency={3}
           waveSpeed={0.05}
-          className="absolute inset-0 opacity-15"
+          className="absolute inset-0 opacity-20"
         />
       </div>
 
@@ -410,11 +410,11 @@ function ClientPageContent() {
                     : "translate-y-0 scale-100 opacity-100"
                 }`}
               >
-                <h1 className="text-center text-3xl font-semibold tracking-tight md:text-4xl">
+                <h1 className="text-center text-3xl font-semibold tracking-tight md:text-4xl gradient-text">
                   Hi, what procurement would you like to request?
                 </h1>
 
-                <div className="rounded-2xl border border-border bg-card/90 p-2 shadow-sm backdrop-blur">
+                <div className="rounded-2xl border border-primary/20 bg-card/90 p-2 shadow-lg shadow-primary/10 glass ring-1 ring-primary/10">
                   <div className="flex items-center gap-2">
                     <input
                       id="request-prompt"
