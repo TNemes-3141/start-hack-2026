@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/session";
 
 type ParsedClientRequest = {
   request_language: string;
@@ -30,6 +31,7 @@ type ChoiceOptions = {
   request_language_options: string[];
   category_l1_options: string[];
   category_l2_by_l1: Record<string, string[]>;
+  typical_unit_by_l1_l2: Record<string, string>;
   country_options: string[];
   city_options: string[];
   currency_options: string[];
@@ -80,6 +82,7 @@ const EXTRACTION_SYSTEM_PROMPT =
   "Output all other textual fields in English consistently, even when the input request is in another language. " +
   "contract_type_requested must be exactly one of: purchase, sell. If not explicit, return empty string. " +
   "Use ISO date format YYYY-MM-DD when a date is known. " +
+  `Today's date is ${new Date()}, use this information to fill in the date, if the input is e.g. 'order by the end of next week'` +
   "delivery_countries must be an array of ISO 3166-1 alpha-2 country codes (for example ['DE']). " +
   "Semantic definitions: preferred_supplier_mentioned is a supplier explicitly requested/desired in this specific request; incumbent_supplier is the currently active supplier relationship before this request. " +
   "If there is no explicit evidence of an incumbent supplier, keep incumbent_supplier empty. " +
@@ -114,15 +117,23 @@ function uniqueSorted(values: string[]): string[] {
 function parseCategories(csv: string): {
   categoryL1: string[];
   categoryL2ByL1: Record<string, string[]>;
+  typicalUnitByL1L2: Record<string, string>;
 } {
   const lines = csv.split(/\r?\n/).filter(Boolean);
+  const headers = lines[0].split(",").map((h) => h.trim());
+  const l1Idx = headers.indexOf("category_l1");
+  const l2Idx = headers.indexOf("category_l2");
+  const unitIdx = headers.indexOf("typical_unit");
+
   const l1Values = new Set<string>();
   const l2ByL1 = new Map<string, Set<string>>();
+  const typicalUnitByL1L2: Record<string, string> = {};
 
   lines.slice(1).forEach((line) => {
-    const [l1Raw, l2Raw] = line.split(",");
-    const l1 = l1Raw?.trim() ?? "";
-    const l2 = l2Raw?.trim() ?? "";
+    const parts = line.split(",");
+    const l1 = parts[l1Idx]?.trim() ?? "";
+    const l2 = parts[l2Idx]?.trim() ?? "";
+    const unit = unitIdx >= 0 ? (parts[unitIdx]?.trim() ?? "") : "";
 
     if (!l1 || !l2) {
       return;
@@ -133,6 +144,10 @@ function parseCategories(csv: string): {
       l2ByL1.set(l1, new Set<string>());
     }
     l2ByL1.get(l1)?.add(l2);
+
+    if (unit) {
+      typicalUnitByL1L2[`${l1}|${l2}`] = unit;
+    }
   });
 
   const categoryL2ByL1: Record<string, string[]> = {};
@@ -143,6 +158,7 @@ function parseCategories(csv: string): {
   return {
     categoryL1: uniqueSorted(Array.from(l1Values)),
     categoryL2ByL1,
+    typicalUnitByL1L2,
   };
 }
 
@@ -225,6 +241,7 @@ async function getChoiceOptions(): Promise<ChoiceOptions> {
         request_language_options: requests.requestLanguages,
         category_l1_options: categories.categoryL1,
         category_l2_by_l1: categories.categoryL2ByL1,
+        typical_unit_by_l1_l2: categories.typicalUnitByL1L2,
         country_options: suppliers.countries,
         city_options: requests.cities,
         currency_options: suppliers.currencies,
@@ -233,10 +250,10 @@ async function getChoiceOptions(): Promise<ChoiceOptions> {
     })().catch((error) => {
       choiceOptionsPromise = null;
       throw error;
-    });
+    }) as Promise<ChoiceOptions>;
   }
 
-  return choiceOptionsPromise;
+  return choiceOptionsPromise!;
 }
 
 function readString(value: unknown): string {
@@ -323,6 +340,12 @@ function normalizeParsedRequest(
     choices.category_l2_by_l1[categoryL1] ?? [],
   );
 
+  const unitOfMeasure =
+    readString(input.unit_of_measure) ||
+    (categoryL1 && categoryL2
+      ? (choices.typical_unit_by_l1_l2[`${categoryL1}|${categoryL2}`] ?? "")
+      : "");
+
   return {
     request_language: normalizeChoice(
       readString(input.request_language),
@@ -340,7 +363,7 @@ function normalizeParsedRequest(
     currency: normalizeChoice(readString(input.currency), choices.currency_options),
     budget_amount: readNumber(input.budget_amount),
     quantity: readNumber(input.quantity),
-    unit_of_measure: readString(input.unit_of_measure),
+    unit_of_measure: unitOfMeasure,
     required_by_date: readString(input.required_by_date),
     preferred_supplier_mentioned: readString(input.preferred_supplier_mentioned),
     incumbent_supplier: readString(input.incumbent_supplier),
@@ -432,11 +455,17 @@ export async function POST(request: Request) {
     const reviewedRaw = reviewPass.choices[0]?.message?.content;
     const reviewedParsed = parseModelJson(reviewedRaw);
 
+    const session = await getSession();
+    const sessionRole = session.roleLabel ?? session.role ?? "";
+
     const data = normalizeParsedRequest(reviewedParsed, choiceOptions);
     const merged = {
       ...DEFAULTS,
       ...data,
       request_text: data.request_text || prompt,
+      requester_role: data.requester_role || sessionRole,
+      preferred_supplier_mentioned: data.preferred_supplier_mentioned || "None",
+      incumbent_supplier: data.incumbent_supplier || "None",
     };
 
     return NextResponse.json({ data: merged });
