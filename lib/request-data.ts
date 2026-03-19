@@ -88,6 +88,7 @@ export type RequestInterpretation = {
   data_residency_required?: boolean;
   data_residency_constraint?: boolean;
   requester_instruction?: string;
+  fast_track_eligible?: boolean;
   [key: string]: unknown;
 };
 
@@ -152,6 +153,47 @@ export type EligibleSupplier = {
   notes: string | null;
 };
 
+// ── ShortlistEntry ────────────────────────────────────────────────────────────
+// Extends EligibleSupplier with pricing, request-context flags, and scoring data.
+
+export type LeadTimeStatus = "standard" | "expedited_only" | "cannot_meet" | "no_deadline";
+
+export type ScoringBreakdown = {
+  price_raw: number;          // 0–100, normalised inverse of total cost
+  quality_raw: number;        // 0–100, normalised quality_score
+  risk_raw: number;           // 0–100, normalised inverse of risk_score
+  esg_raw: number;            // 0–100, normalised esg_score
+  base_score: number;         // weighted sum of the four components
+  preferred_bonus: number;    // +5 if policy-preferred supplier
+  incumbent_bonus: number;    // +2 if matches incumbent_supplier in request
+  data_residency_bonus: number; // +3 if data_residency_constraint && data_residency_supported
+  lead_time_penalty: number;  // −3 expedited-only, −8 cannot meet deadline
+  final_score: number;        // base + all bonuses/penalties
+  weights: { price: number; quality: number; risk: number; esg: number };
+  lead_time_status: LeadTimeStatus;
+};
+
+export type ShortlistEntry = EligibleSupplier & {
+  // Pricing
+  rank: number;
+  pricing_tier_applied: string;
+  unit_price: number;
+  total_price: number;
+  expedited_unit_price: number;
+  expedited_total: number;
+  standard_lead_time_days: number;
+  expedited_lead_time_days: number;
+  // Request-context flags
+  is_requester_preferred: boolean; // matches preferred_supplier_mentioned
+  is_incumbent: boolean;           // matches incumbent_supplier
+  policy_compliant: boolean;
+  covers_delivery_country: boolean;
+  recommendation_note: string;
+  // Scoring (populated by scoring_and_ranking; zero-initialised by pricing_calculation)
+  ranking_score: number;
+  scoring_breakdown: ScoringBreakdown;
+};
+
 // ── Historical Precedents ─────────────────────────────────────────────────────
 
 export type HistoricalAward = {
@@ -195,14 +237,7 @@ export type RequestData = {
   stages: Stages;
   approval_tier: ApprovalTier | null;
   eligible_suppliers: EligibleSupplier[];
-  supplier_shortlist: {
-    rank: number; supplier_id: string; supplier_name: string; preferred: boolean; incumbent: boolean;
-    pricing_tier_applied: string; unit_price_eur: number; total_price_eur: number;
-    standard_lead_time_days: number; expedited_lead_time_days: number;
-    expedited_unit_price_eur: number; expedited_total_eur: number;
-    quality_score: number; risk_score: number; esg_score: number;
-    policy_compliant: boolean; covers_delivery_country: boolean; recommendation_note: string;
-  }[];
+  supplier_shortlist: ShortlistEntry[];
   historical_precedents: HistoricalPrecedent[];
   suppliers_excluded: { supplier_id: string; supplier_name: string; reason: string }[];
   recommendation: { status: string; reason: string; preferred_supplier_if_resolved: string; preferred_supplier_rationale: string; minimum_budget_required: number; minimum_budget_currency: string };
@@ -300,7 +335,7 @@ export function mergeRequestData(prev: RequestData, patch: RequestDataPatch): Re
 
   // Remaining top-level fields: arrays append, primitives overwrite.
   // Exception: REPLACE_ARRAYS fields are replaced in-place (they represent current filtered state).
-  const REPLACE_ARRAYS = new Set<string>(["eligible_suppliers"]);
+  const REPLACE_ARRAYS = new Set<string>(["eligible_suppliers", "supplier_shortlist"]);
   const skip = new Set(["stages", "request_interpretation"]);
   for (const _key of Object.keys(patch)) {
     if (skip.has(_key)) continue;
