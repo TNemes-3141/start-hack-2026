@@ -85,7 +85,7 @@ function AppHeader({ roleLabel }: { roleLabel?: string }) {
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="h-4" />
       <div className="flex-1" />
-      <Link href="/" className="flex items-center gap-3 rounded-md px-2 py-1 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+      <Link href="/procurement" className="flex items-center gap-3 rounded-md px-2 py-1 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
         {roleLabel && (
           <p className="text-sm font-medium hidden sm:block">{roleLabel}</p>
         )}

@@ -29,6 +29,8 @@ import {
   FileText,
   Eye,
   ThumbsUp,
+  UserCheck,
+  CheckCheck,
 } from "lucide-react"
 import type { PipelineNodeStatus, NodeStatuses } from "@/lib/pipeline-graph"
 import type { OrchestratorMode } from "@/hooks/use-rag-orchestrator"
@@ -280,18 +282,77 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
+function IssueCard({ issue, onResolve }: { issue: import("@/lib/request-data").Issue; onResolve?: (issueId: string) => Promise<void> }) {
+  const [resolving, setResolving] = useState(false)
+  const isResolved = issue.resolved === true
+  const isBlocking = issue.blocking && !isResolved
+
+  const severityClass =
+    issue.severity === "critical" ? "bg-destructive text-destructive-foreground" :
+    issue.severity === "high"     ? "bg-orange-500 text-white" :
+    issue.severity === "middle"   ? "bg-amber-500 text-white" : ""
+
+  return (
+    <div className={`rounded-md border px-3 py-2.5 ${isResolved ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+      {/* Header row: severity + status badges */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Badge variant="secondary" className={`text-[10px] capitalize ${severityClass}`}>{issue.severity}</Badge>
+          {isResolved
+            ? <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-600 gap-1"><CheckCheck className="h-2.5 w-2.5" />Resolved</Badge>
+            : isBlocking && <Badge className="text-[10px] bg-amber-600 hover:bg-amber-600">Blocking</Badge>
+          }
+        </div>
+        <span className="text-[10px] font-mono text-muted-foreground shrink-0">{issue.issue_id}</span>
+      </div>
+
+      {/* Trigger — main description */}
+      {issue.trigger && (
+        <p className="text-xs font-medium text-foreground leading-snug">{issue.trigger}</p>
+      )}
+
+      {/* Escalate to */}
+      {issue.escalate_to && (
+        <div className="flex items-center gap-1.5 mt-2">
+          <UserCheck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Escalate to:</span> {issue.escalate_to}
+          </span>
+        </div>
+      )}
+
+      {/* Resolve button — only for blocking, unresolved issues when callback provided */}
+      {isBlocking && onResolve && (
+        <button
+          onClick={async () => {
+            setResolving(true)
+            try { await onResolve(issue.issue_id) } finally { setResolving(false) }
+          }}
+          disabled={resolving}
+          className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+          {resolving ? "Resolving…" : `Resolve — ${issue.escalate_to ?? "Approver"}`}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function NodeDetailPanel({
   nodeId,
   status,
   data,
   open,
   onClose,
+  onResolveIssue,
 }: {
   nodeId: NodeId
   status: PipelineNodeStatus
   data: RequestData
   open: boolean
   onClose: () => void
+  onResolveIssue?: (issueId: string) => Promise<void>
 }) {
   const label = nodeLabels[nodeId]
   const { icon } = statusConfig[status]
@@ -355,17 +416,7 @@ function NodeDetailPanel({
             {sortedIssues.length === 0 ? <EmptyState label="No issues" /> : (
               <div className="flex flex-col gap-2">
                 {sortedIssues.map((issue) => (
-                  <div key={issue.issue_id} className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400">{issue.issue_id}</span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Badge variant="secondary" className={`text-[10px] capitalize ${issue.severity === "critical" ? "bg-destructive text-destructive-foreground" : issue.severity === "high" ? "bg-orange-500 text-white" : issue.severity === "middle" ? "bg-amber-500 text-white" : ""}`}>{issue.severity}</Badge>
-                        {issue.blocking && <Badge className="text-[10px] bg-amber-600 hover:bg-amber-600">Blocking</Badge>}
-                      </div>
-                    </div>
-                    {issue.trigger && <p className="text-xs text-muted-foreground mt-1">{issue.trigger}</p>}
-                    {issue.escalate_to && <p className="text-xs text-muted-foreground mt-0.5"><span className="font-medium">Escalate to:</span> {issue.escalate_to}</p>}
-                  </div>
+                  <IssueCard key={issue.issue_id} issue={issue} onResolve={onResolveIssue} />
                 ))}
               </div>
             )}
@@ -502,12 +553,14 @@ export function PipelineGraphView({
   isPipelineRunning,
   mode,
   onApprove,
+  onResolveIssue,
 }: {
   nodeStatuses: NodeStatuses
   requestData: RequestData
   isPipelineRunning: boolean
   mode?: OrchestratorMode
   onApprove?: () => Promise<void>
+  onResolveIssue?: (stageKey: string, issueId: string) => Promise<void>
 }) {
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -641,6 +694,13 @@ export function PipelineGraphView({
         data={requestData}
         open={!!selectedNodeId}
         onClose={() => setSelectedNodeId(null)}
+        onResolveIssue={onResolveIssue
+          ? (issueId) => {
+              const stageKey = nodeToStageId[lastNodeId.current ?? "request-submitted"]
+              return stageKey ? onResolveIssue(stageKey, issueId) : Promise.resolve()
+            }
+          : undefined
+        }
       />
     </div>
   )

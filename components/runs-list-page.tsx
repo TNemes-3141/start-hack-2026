@@ -252,7 +252,7 @@ export function RunsListPage({
 }) {
   const isEscalationMode = escalateTo !== undefined
 
-  const { approveAndResume } = useRequestStore()
+  const { approveAndResume, resolveIssue } = useRequestStore()
   const [roleLabel, setRoleLabel] = useState<string | null>(null)
   useEffect(() => {
     fetch("/api/session").then(r => r.json()).then((d: { roleLabel: string | null }) => setRoleLabel(d.roleLabel)).catch(() => null)
@@ -410,6 +410,9 @@ export function RunsListPage({
             isPipelineRunning={isRunning}
             mode="owner"
             onApprove={handleApprove}
+            onResolveIssue={async (stageKey, issueId) => {
+              await resolveIssue(selectedRun.id, selectedRun.context_payload ?? createRequestData(), selectedRun.node_statuses ?? INITIAL_STATUSES, stageKey, issueId)
+            }}
           />
         </div>
       </div>

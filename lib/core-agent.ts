@@ -10,8 +10,13 @@ function hasBlocking(data: RequestData): boolean {
 export async function core_agent(
   uploadedJson: RequestInterpretation,
   onUpdate: (node: string, patch: RequestDataPatch) => void,
+  options?: {
+    skipBlockingChecks?: boolean;
+    resumeFrom?: { data: RequestData; completedStages: Set<string> };
+  },
 ) {
-  let currentData = createRequestData(uploadedJson);
+  // When resuming, start from the existing data so downstream stages have correct inputs.
+  let currentData = options?.resumeFrom?.data ?? createRequestData(uploadedJson);
 
   const interp = currentData.request_interpretation;
 
@@ -23,6 +28,21 @@ export async function core_agent(
     };
   }
 
+  // If a stage was already completed in a prior run, signal the graph without hitting the API.
+  async function runStage(nodeName: string, makeCall: () => Promise<RequestDataPatch>): Promise<void> {
+    if (options?.resumeFrom?.completedStages.has(nodeName)) {
+      console.log(`[core_agent] ↷ ${nodeName} skipped (already completed)`);
+      namedUpdate(nodeName)({});
+      return;
+    }
+    await makeCall().then(namedUpdate(nodeName));
+  }
+
+  function shouldAbort(): boolean {
+    if (options?.skipBlockingChecks) return false;
+    return hasBlocking(currentData);
+  }
+
   function abort(after: string) {
     console.log(`[core_agent] pipeline aborted after ${after} — blocking issue or escalation detected`);
   }
@@ -31,72 +51,72 @@ export async function core_agent(
   // Branch A: translate
   // Branch B: internalCoherence → missingRequiredData → checkAvailableProducts (sequential)
   await Promise.all([
-    translateCall(interp.request_text ?? "").then(namedUpdate("translation")),
+    runStage("translation", () => translateCall(interp.request_text ?? "")),
     (async () => {
-      await internalCoherenceCall(interp).then(namedUpdate("internal_coherence"));
-      if (hasBlocking(currentData)) return;
-      await missingRequiredDataCall(interp).then(namedUpdate("missing_required_data"));
-      if (hasBlocking(currentData)) return;
-      await checkAvailableProductsCall(interp).then(namedUpdate("check_available_products"));
+      await runStage("internal_coherence", () => internalCoherenceCall(interp));
+      if (shouldAbort()) return;
+      await runStage("missing_required_data", () => missingRequiredDataCall(interp));
+      if (shouldAbort()) return;
+      await runStage("check_available_products", () => checkAvailableProductsCall(interp));
     })(),
   ]);
 
-  if (hasBlocking(currentData)) { abort("group 1"); return currentData; }
+  if (shouldAbort()) { abort("group 1"); return currentData; }
 
   // ── inappropriateRequests ─────────────────────────────────────────────────
-  await inappropriateRequestsCall(interp).then(namedUpdate("inappropriate_requests"));
-  if (hasBlocking(currentData)) { abort("inappropriate_requests"); return currentData; }
+  await runStage("inappropriate_requests", () => inappropriateRequestsCall(interp));
+  if (shouldAbort()) { abort("inappropriate_requests"); return currentData; }
 
   // ── Group 2 (parallel) ────────────────────────────────────────────────────
   // Branch A: precedenceLookup → approvalTier (sequential)
   // Branch B: applyStaticCategoryRules
   await Promise.all([
     (async () => {
-      await precedenceLookupCall(interp).then(namedUpdate("precedence_lookup"));
-      if (hasBlocking(currentData)) return;
-      await approvalTierCall(currentData).then(namedUpdate("approval_tier"));
+      await runStage("precedence_lookup", () => precedenceLookupCall(interp));
+      if (shouldAbort()) return;
+      await runStage("approval_tier", () => approvalTierCall(currentData));
     })(),
-    applyStaticCategoryRulesCall(interp).then(namedUpdate("apply_category_rules")),
+    runStage("apply_category_rules", () => applyStaticCategoryRulesCall(interp)),
   ]);
 
-  if (hasBlocking(currentData)) { abort("group 2"); return currentData; }
+  if (shouldAbort()) { abort("group 2"); return currentData; }
 
   // ── purelyEligibleSuppliers ───────────────────────────────────────────────
-  await purelyEligibleSuppliersCall(currentData.request_interpretation).then(namedUpdate("purely_eligible_suppliers"));
-  if (hasBlocking(currentData)) { abort("purely_eligible_suppliers"); return currentData; }
+  await runStage("purely_eligible_suppliers", () => purelyEligibleSuppliersCall(currentData.request_interpretation));
+  if (shouldAbort()) { abort("purely_eligible_suppliers"); return currentData; }
 
   // ── Group 3 (parallel) ────────────────────────────────────────────────────
   // Branch A: restrictedSuppliers → geographicalRules (sequential, both mutate eligible_suppliers)
   // Branch B: evaluatePreferredSupplier (independent — only produces reasoning/issues)
   await Promise.all([
     (async () => {
-      await restrictedSuppliersCall(currentData).then(namedUpdate("restricted_suppliers"));
-      if (hasBlocking(currentData)) return;
-      await geographicalRulesCall(currentData).then(namedUpdate("geographical_rules"));
+      await runStage("restricted_suppliers", () => restrictedSuppliersCall(currentData));
+      if (shouldAbort()) return;
+      await runStage("geographical_rules", () => geographicalRulesCall(currentData));
     })(),
-    evaluatePreferredSupplierCall(currentData).then(namedUpdate("evaluate_preferred_supplier")),
+    runStage("evaluate_preferred_supplier", () => evaluatePreferredSupplierCall(currentData)),
   ]);
 
-  if (hasBlocking(currentData)) { abort("group 3"); return currentData; }
+  if (shouldAbort()) { abort("group 3"); return currentData; }
 
   // ── applyDynamicCategoryRules ─────────────────────────────────────────────
-  await applyDynamicCategoryRulesCall(currentData).then(namedUpdate("apply_dynamic_category_rules"));
-  if (hasBlocking(currentData)) { abort("apply_dynamic_category_rules"); return currentData; }
+  await runStage("apply_dynamic_category_rules", () => applyDynamicCategoryRulesCall(currentData));
+  if (shouldAbort()) { abort("apply_dynamic_category_rules"); return currentData; }
 
   // ── pricingCalculation ────────────────────────────────────────────────────
-  await pricingCalculationCall(currentData).then(namedUpdate("pricing_calculation"));
-  if (hasBlocking(currentData)) { abort("pricing_calculation"); return currentData; }
+  await runStage("pricing_calculation", () => pricingCalculationCall(currentData));
+  if (shouldAbort()) { abort("pricing_calculation"); return currentData; }
 
   // ── reevaluateTier ────────────────────────────────────────────────────────
-  await reevaluateTierCall(currentData).then(namedUpdate("reevaluate_tier_from_quote"));
-  if (hasBlocking(currentData)) { abort("reevaluate_tier_from_quote"); return currentData; }
+  await runStage("reevaluate_tier_from_quote", () => reevaluateTierCall(currentData));
+  if (shouldAbort()) { abort("reevaluate_tier_from_quote"); return currentData; }
 
   // ── scoringAndRanking ─────────────────────────────────────────────────────
-  await scoringAndRankingCall(currentData).then(namedUpdate("scoring_and_ranking"));
-  if (hasBlocking(currentData)) { abort("scoring_and_ranking"); return currentData; }
+  await runStage("scoring_and_ranking", () => scoringAndRankingCall(currentData));
+  if (shouldAbort()) { abort("scoring_and_ranking"); return currentData; }
 
   // ── finalCheck ────────────────────────────────────────────────────────────
-  await finalCheckCall(currentData).then(namedUpdate("final_check"));
+  await runStage("final_check", () => finalCheckCall(currentData));
 
   console.log("[core_agent] final RequestData:", JSON.stringify(currentData, null, 2));
   return currentData;
