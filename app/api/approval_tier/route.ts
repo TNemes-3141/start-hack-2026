@@ -52,52 +52,59 @@ function findThreshold(currency: string, budget: number): Threshold | null {
   ) ?? null;
 }
 
-function detectBoundary(currency: string, budget: number): { isBoundary: boolean; boundaryValue: number | null } {
-  const boundaries = THRESHOLDS
-    .filter((t) => t.currency === currency.toUpperCase() && t.tier_number > 1)
-    .map((t) => t.min_amount);
+type BoundaryInfo =
+  | { isBoundary: false; boundaryValue: null; lowerTier: null; upperTier: null }
+  | { isBoundary: true; boundaryValue: number; lowerTier: Threshold; upperTier: Threshold };
 
-  for (const b of boundaries) {
+function detectBoundary(currency: string, budget: number): BoundaryInfo {
+  const currThresholds = THRESHOLDS.filter((t) => t.currency === currency.toUpperCase());
+  const boundaries = currThresholds.filter((t) => t.tier_number > 1);
+
+  for (const upper of boundaries) {
+    const b = upper.min_amount;
     if (Math.abs(budget - b) / b <= 0.05) {
-      return { isBoundary: true, boundaryValue: b };
+      const lower = currThresholds.find((t) => t.tier_number === upper.tier_number - 1)!;
+      return { isBoundary: true, boundaryValue: b, lowerTier: lower, upperTier: upper };
     }
   }
-  return { isBoundary: false, boundaryValue: null };
+  return { isBoundary: false, boundaryValue: null, lowerTier: null, upperTier: null };
 }
 
 // ── LLM prompt ────────────────────────────────────────────────────────────────
 
-const PROMPT = `You are a senior procurement compliance officer finalising the approval tier for a purchase request.
+const PROMPT = `You are a senior procurement compliance officer finalising the approval tier for a purchase request that falls near a tier boundary.
 
 You will receive a JSON object with:
 - "request_summary": key fields of the purchase request
-- "statically_determined_tier": the tier number and threshold info determined from budget/currency
-- "is_boundary_case": whether the budget is within ±5% of a tier boundary
-- "boundary_value": the boundary amount (if boundary case)
+- "boundary_value": the exact threshold amount that separates the two candidate tiers
+- "lower_tier": the tier immediately BELOW the boundary (applies when budget < boundary)
+- "upper_tier": the tier immediately ABOVE the boundary (applies when budget >= boundary)
+- "budget_position": whether the budget is just below or just above the boundary
 - "pipeline_issues": all issues raised by earlier pipeline stages
 - "pipeline_escalations": all escalations raised by earlier pipeline stages
 - "historical_precedents_summary": brief summary of similar past requests and their outcomes
 
-Your job is to determine the FINAL approval tier (1–5), considering:
-- The statically determined tier is the baseline
-- Boundary cases should be resolved conservatively (prefer the higher tier if in doubt)
-- Risk signals from earlier stages may justify a higher tier
-- Historical precedents showing escalations or policy concerns in similar requests are relevant
-- In case of doubt, escalate upward — a wrongly low tier is more harmful than a wrongly high one
+CRITICAL RULES:
+- Your decision is ONLY between "lower_tier" and "upper_tier". These are the two tiers that share this specific boundary. You MUST NOT select any other tier.
+- If the budget is slightly BELOW the boundary: decide whether it belongs in the lower tier or should be bumped UP to the upper tier.
+- If the budget is slightly ABOVE the boundary: decide whether it belongs in the upper tier or could be moved DOWN to the lower tier.
+- Base your decision on risk signals from earlier pipeline stages and historical precedents. If risk signals are elevated, prefer the higher of the two. If the request looks clean and routine, the statically determined tier is likely correct.
+- Do NOT automatically tier up. Only move to the higher tier if there is a specific reason (risk signals, policy concerns, escalations from earlier stages).
 
 Respond with a JSON object with exactly these fields:
 {
-  "final_tier_number": <integer 1–5>,
+  "final_tier_number": <integer — MUST be either lower_tier.tier_number or upper_tier.tier_number>,
   "escalate_to_procurement_at_minimum": <boolean — true if you raised the tier or there are notable risk signals>,
-  "reasoning": "<detailed explanation of your decision, referencing specific signals>"
+  "reasoning": "<detailed explanation of your decision, referencing specific signals and why you chose one tier over the other>"
 }
 
 Return only valid JSON. No markdown, no extra text.`;
 
 // ── Summarise RequestData context for the LLM ─────────────────────────────────
 
-function buildLLMContext(data: RequestData, staticTier: Threshold, isBoundary: boolean, boundaryValue: number | null) {
+function buildLLMContext(data: RequestData, boundaryValue: number, lowerTier: Threshold, upperTier: Threshold) {
   const interp = data.request_interpretation;
+  const budget = interp.budget_amount ?? 0;
 
   // Collect all issues and escalations from stages run so far
   const allIssues = Object.values(data.stages).flatMap((s) => s.issues);
@@ -115,7 +122,7 @@ function buildLLMContext(data: RequestData, staticTier: Threshold, isBoundary: b
       category: `${interp.category_l1} / ${interp.category_l2}`,
       quantity: interp.quantity,
       unit_of_measure: interp.unit_of_measure,
-      budget_amount: interp.budget_amount,
+      budget_amount: budget,
       currency: interp.currency,
       required_by_date: interp.required_by_date,
       country: interp.country,
@@ -123,15 +130,22 @@ function buildLLMContext(data: RequestData, staticTier: Threshold, isBoundary: b
       preferred_supplier_mentioned: interp.preferred_supplier_mentioned,
       esg_requirement: interp.esg_requirement,
     },
-    statically_determined_tier: {
-      tier_number: staticTier.tier_number,
-      threshold_id: staticTier.threshold_id,
-      min_supplier_quotes: staticTier.min_supplier_quotes,
-      approvers: staticTier.approvers,
-      deviation_approval_required_from: staticTier.deviation_approval_required_from,
-    },
-    is_boundary_case: isBoundary,
     boundary_value: boundaryValue,
+    budget_position: budget < boundaryValue ? "just_below_boundary" : "just_above_boundary",
+    lower_tier: {
+      tier_number: lowerTier.tier_number,
+      threshold_id: lowerTier.threshold_id,
+      range: `${lowerTier.min_amount} – ${lowerTier.max_amount} ${lowerTier.currency}`,
+      min_supplier_quotes: lowerTier.min_supplier_quotes,
+      approvers: lowerTier.approvers,
+    },
+    upper_tier: {
+      tier_number: upperTier.tier_number,
+      threshold_id: upperTier.threshold_id,
+      range: `${upperTier.min_amount} – ${upperTier.max_amount} ${upperTier.currency}`,
+      min_supplier_quotes: upperTier.min_supplier_quotes,
+      approvers: upperTier.approvers,
+    },
     pipeline_issues: allIssues.map((i) => ({ id: i.issue_id, trigger: i.trigger, severity: i.severity, blocking: i.blocking })),
     pipeline_escalations: allEscalations.map((e) => ({ id: e.escalation_id, rule: e.rule, trigger: e.trigger, escalate_to: e.escalate_to })),
     historical_precedents_summary: precedentSummary,
@@ -169,7 +183,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 2. Boundary detection ──────────────────────────────────────────────────
-  const { isBoundary, boundaryValue } = detectBoundary(currency, budget);
+  const { isBoundary, boundaryValue, lowerTier, upperTier } = detectBoundary(currency, budget);
 
   if (isBoundary) {
     issues.push({
@@ -193,7 +207,7 @@ export async function POST(req: NextRequest) {
 
   if (isBoundary) {
     llmInvolved = true;
-    const context = buildLLMContext(data, staticTier, isBoundary, boundaryValue);
+    const context = buildLLMContext(data, boundaryValue!, lowerTier!, upperTier!);
 
     console.log(`[approval_tier] boundary case detected — invoking LLM`);
     const completion = await client.chat.completions.create({

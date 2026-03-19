@@ -1,12 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, SendHorizontal } from "lucide-react";
+import { Check, ChevronDown, Mic, MicOff, SendHorizontal } from "lucide-react";
 import Dither from "@/components/Dither";
 import Dot from "@/components/animata/background/dot";
 import { type RequestInterpretation, FIELD_LABELS } from "@/lib/request-data";
 import { RequestStoreProvider, useRequestStore } from "@/lib/request-store";
+import { useRealtimeTranscription } from "@/hooks/use-realtime-transcription";
 // core_agent is invoked via startPipeline from the store
 
 type ClientRequestForm = {
@@ -120,8 +121,17 @@ function ClientPageContent() {
   const [formOptions, setFormOptions] = useState<FormOptions>(EMPTY_OPTIONS);
   const [isDark, setIsDark] = useState(false);
 
-  const canExtract = useMemo(() => !isLoading && prompt.trim().length > 0, [
+  // --- STT state ---
+  const { isRecording, transcript, startRecording, stopRecording, error: sttError } =
+    useRealtimeTranscription();
+  const [isRecordingMode, setIsRecordingMode] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const lastParsedTranscriptRef = useRef("");
+  const isParsingTranscriptRef = useRef(false);
+
+  const canExtract = useMemo(() => !isLoading && !isRecording && prompt.trim().length > 0, [
     isLoading,
+    isRecording,
     prompt,
   ]);
 
@@ -235,6 +245,127 @@ function ClientPageContent() {
     }
   }
 
+  // --- STT: mic click handler ---
+  const handleMicClick = useCallback(async () => {
+    if (isRecording) {
+      setIsFinalizing(true);
+
+      // Wait for final transcription to arrive, then do one last parse
+      const finalTranscript = await stopRecording();
+      setIsRecordingMode(false);
+
+      if (finalTranscript && finalTranscript !== lastParsedTranscriptRef.current) {
+        lastParsedTranscriptRef.current = finalTranscript;
+        console.log("[STT] Final transcript to parse-stream:", finalTranscript);
+        try {
+          const res = await fetch("/api/client/parse-stream", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript: finalTranscript }),
+          });
+          const payload = (await res.json()) as { data?: ClientRequestForm };
+          if (payload.data) {
+            setForm((prev) => {
+              const next = { ...prev };
+              for (const [key, value] of Object.entries(payload.data!)) {
+                const k = key as keyof ClientRequestForm;
+                if (typeof value === "string" && value !== "" && value !== "None") {
+                  (next as Record<string, unknown>)[k] = value;
+                } else if (typeof value === "number" && value > 0) {
+                  (next as Record<string, unknown>)[k] = value;
+                } else if (Array.isArray(value) && value.length > 0) {
+                  (next as Record<string, unknown>)[k] = value;
+                } else if (typeof value === "boolean" && value) {
+                  (next as Record<string, unknown>)[k] = value;
+                }
+              }
+              return next as ClientRequestForm;
+            });
+          }
+        } catch (e) {
+          console.error("[STT] Final parse-stream error:", e);
+        }
+      }
+
+      // Fill defaults for fields that are still empty after all parsing
+      setForm((prev) => ({
+        ...prev,
+        preferred_supplier_mentioned: prev.preferred_supplier_mentioned || "None",
+        incumbent_supplier: prev.incumbent_supplier || "None",
+        business_unit: prev.business_unit || "Unknown",
+        requester_role: prev.requester_role || "Unknown",
+      }));
+
+      setIsFinalizing(false);
+      return;
+    }
+
+    setErrorMessage("");
+    setForm(EMPTY_FORM);
+    setIsRecordingMode(true);
+
+    // Transition to form view immediately
+    setIsPromptLeaving(true);
+    window.setTimeout(() => {
+      setHasExtractionResult(true);
+      setShowPromptCard(false);
+      setShowResultCard(true);
+      setIsPromptLeaving(false);
+      window.requestAnimationFrame(() => {
+        setIsResultVisible(true);
+      });
+    }, 280);
+
+    await startRecording();
+  }, [isRecording, startRecording, stopRecording]);
+
+  // --- STT: progressive parse effect ---
+  useEffect(() => {
+    if (!isRecording || !transcript || transcript === lastParsedTranscriptRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      if (isParsingTranscriptRef.current) return;
+      isParsingTranscriptRef.current = true;
+      lastParsedTranscriptRef.current = transcript;
+      console.log("[STT] Sending transcript to parse-stream:", transcript);
+
+      try {
+        const res = await fetch("/api/client/parse-stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript }),
+        });
+        const payload = (await res.json()) as { data?: ClientRequestForm };
+        if (payload.data) {
+          setForm((prev) => {
+            const next = { ...prev };
+            for (const [key, value] of Object.entries(payload.data!)) {
+              const k = key as keyof ClientRequestForm;
+              if (typeof value === "string" && value !== "" && value !== "None") {
+                (next as Record<string, unknown>)[k] = value;
+              } else if (typeof value === "number" && value > 0) {
+                (next as Record<string, unknown>)[k] = value;
+              } else if (Array.isArray(value) && value.length > 0) {
+                (next as Record<string, unknown>)[k] = value;
+              } else if (typeof value === "boolean" && value) {
+                (next as Record<string, unknown>)[k] = value;
+              }
+            }
+            return next as ClientRequestForm;
+          });
+        }
+      } catch (e) {
+        console.error("[STT] Parse-stream error:", e);
+      } finally {
+        isParsingTranscriptRef.current = false;
+      }
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [transcript, isRecording]);
+
   function handleSubmit() {
     startPipeline(form as RequestInterpretation);
     router.push("/dashboard/request");
@@ -294,6 +425,15 @@ function ClientPageContent() {
                       placeholder="Describe your procurement request..."
                     />
                     <button
+                      type="button"
+                      onClick={handleMicClick}
+                      aria-label="Start voice input"
+                      title="Start voice input"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-secondary text-secondary-foreground transition-colors hover:bg-secondary/80"
+                    >
+                      <Mic className="size-4" />
+                    </button>
+                    <button
                       type="submit"
                       disabled={!canExtract}
                       aria-label="Send request"
@@ -331,7 +471,49 @@ function ClientPageContent() {
                 : "translate-y-1 scale-[0.99] opacity-0"
             }`}
           >
-            {hasMissingInfo ? (
+            {isRecording && (
+              <div className="flex items-center justify-between rounded-md border border-destructive/30 bg-destructive/5 px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-destructive" />
+                  </span>
+                  <span className="text-sm font-medium text-destructive">
+                    Recording&hellip; speak your procurement request
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleMicClick}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-destructive/10 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                >
+                  <MicOff className="size-3.5" />
+                  Stop
+                </button>
+              </div>
+            )}
+
+            {(isRecording || isFinalizing) && transcript && (
+              <div className="rounded-md border border-border bg-muted/50 p-3">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Live Transcript</p>
+                <p className="text-sm text-foreground">{transcript}</p>
+              </div>
+            )}
+
+            {isFinalizing && !isRecording && (
+              <div className="flex items-center gap-3 rounded-md border border-border bg-muted/50 px-4 py-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <span className="text-sm font-medium text-muted-foreground">
+                  Processing final transcription&hellip;
+                </span>
+              </div>
+            )}
+
+            {sttError && (
+              <p className="text-center text-sm text-destructive">{sttError}</p>
+            )}
+
+            {!isRecording && !isFinalizing && hasMissingInfo ? (
               <>
                 <div className="rounded-md border border-border bg-muted p-3 text-sm text-foreground">
                   We are missing some required information. Please review and complete
@@ -341,11 +523,11 @@ function ClientPageContent() {
                   Missing fields: {missingFields.join(", ")}
                 </p>
               </>
-            ) : (
+            ) : !isRecording && !isFinalizing ? (
               <p className="rounded-md border border-border bg-muted p-3 text-sm text-foreground">
                 All required information is present. Press Submit Request to continue.
               </p>
-            )}
+            ) : null}
 
             <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
               <h2 className="mb-5 text-xl font-semibold">Structured Request Form</h2>
@@ -519,10 +701,10 @@ function ClientPageContent() {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={hasMissingInfo}
+                  disabled={hasMissingInfo || isRecording || isFinalizing}
                   className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {"Submit Request"}
+                  {isRecording ? "Stop recording to submit" : isFinalizing ? "Finishing up\u2026" : "Submit Request"}
                 </button>
               </div>
             </div>

@@ -3,22 +3,30 @@ import { NextRequest, NextResponse } from "next/server";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const PROMPT = `You are a translation agent in a procurement pipeline.
+const PROMPT = `You are a language detection and translation agent in a procurement pipeline.
 
-You will receive a procurement request JSON. Your job is to:
-1. Detect the language of the request_text and title fields.
-2. If the text is already in English, return it as-is.
-3. If the text is in any other language, produce a clean English translation of all free-text content, preserving meaning and procurement terminology.
+You will receive a procurement request JSON containing "request_text" and "title" fields.
 
-Return a JSON object with exactly this structure:
+Your task has TWO possible outcomes:
+
+OUTCOME A — If BOTH "request_text" AND "title" are already in English:
+Return exactly: { "already_english": true }
+Do NOT include "request_text" or "title" fields. Do NOT rewrite, rephrase, summarise, or alter the original text in any way.
+
+OUTCOME B — If EITHER "request_text" OR "title" is in a non-English language:
+Return exactly:
 {
-  "request_interpretation": {
-    "request_text": "<English version of the full request's free-text content, or original if already English>"
-    "title": "<English version of the title, or original if already English>"
-  }
+  "already_english": false,
+  "request_text": "<full English translation of request_text>",
+  "title": "<full English translation of title>"
 }
+Translate ALL free-text content into English, preserving meaning and procurement terminology.
 
-Do not include any explanation, markdown, or fields outside this structure.`;
+CRITICAL RULES:
+- "already_english" is MANDATORY in every response.
+- If already_english is true, you MUST NOT include "request_text" or "title" in your response.
+- If already_english is false, you MUST include both "request_text" and "title" with full translations.
+- Do not include any explanation, markdown, or fields outside this structure.`;
 
 export async function POST(req: NextRequest) {
   const body: unknown = await req.json();
@@ -35,9 +43,25 @@ export async function POST(req: NextRequest) {
   });
 
   const result = JSON.parse(completion.choices[0].message.content ?? "{}");
-  const { request_text, title } = result?.request_interpretation ?? {};
-  console.log("[translate] output request_text:", request_text?.slice(0, 200));
-  console.log("[translate] output title:", title);
+  const alreadyEnglish = result.already_english === true;
+
+  console.log("[translate] already_english:", alreadyEnglish);
+
+  // If already English, don't touch request_interpretation at all — the originals stay intact.
+  if (alreadyEnglish) {
+    console.log("[translate] skipping — text is already English");
+    return NextResponse.json({
+      issues: [],
+      escalations: [],
+      reasonings: [],
+      policy_violations: [],
+    });
+  }
+
+  // Not English — use the LLM's translations.
+  const { request_text, title } = result;
+  console.log("[translate] translated request_text:", request_text?.slice(0, 200));
+  console.log("[translate] translated title:", title);
   return NextResponse.json({
     request_interpretation: { request_text, title },
     issues: [],
