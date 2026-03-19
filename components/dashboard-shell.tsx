@@ -57,7 +57,7 @@ function AppSidebar() {
                     asChild
                     isActive={pathname.startsWith(href)}
                     tooltip={label}
-                    className="bg-sidebar text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar data-[active=true]:text-sidebar-foreground"
+                    className="bg-sidebar-foreground text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar data-[active=true]:text-sidebar-foreground"
                   >
                     <Link href={href}>
                       <Icon className="h-4 w-4" />
