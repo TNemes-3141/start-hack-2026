@@ -20,4 +20,8 @@ export async function callApiParallel(
 
 // --- Named API call wrappers (add more here as pipeline grows) ---
 
-export const genericCall = (input: unknown) => callApi("/api/generic", input);
+// export const genericCall = (input: unknown) => callApi("/api/generic", input);
+export const translateCall = (input: unknown) => callApi("/api/translate", input);
+export const internalCoherenceCall = (input: unknown) => callApi("/api/internal_coherence", input);
+export const missingRequiredDataCall = (input: unknown) => callApi("/api/missing_required_data", input);
+export const checkAvailableProductsCall = (input: unknown) => callApi("/api/check_available_products", input);

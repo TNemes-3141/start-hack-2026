@@ -3,60 +3,37 @@ import { NextRequest, NextResponse } from "next/server";
 
 const client = new OpenAI();
 
-const PROMPT = `You are a procurement policy analysis agent. Your job is to carefully review a procurement request and return a structured analysis.
+const PROMPT = `You are a translation agent in a procurement pipeline.
 
-Return a JSON object with exactly these four top-level fields:
+You will receive a procurement request JSON. Your job is to:
+1. Detect the language of any free-text fields (e.g. request descriptions, comments, instructions, titles).
+2. If the text is already in English, return it as-is.
+3. If the text is in any other language, produce a clean English translation of all free-text content, preserving meaning and procurement terminology.
 
-"issues": An array of concrete problems identified in the request. Each entry must have:
-  - "issue_id": string — unique identifier, e.g. "ISS-001"
-  - "trigger": string — the specific condition or field value that caused this issue
-  - "escalate_to": string — who needs to act to resolve it (e.g. "Requester", "Procurement Manager", "Head of Category")
-  - "blocking": boolean — true if this issue prevents the request from proceeding
+Return a JSON object with exactly this structure:
+{
+  "request_interpretation": {
+    "request_text": "<English version of the full request's free-text content, or original if already English>"
+  }
+}
 
-"escalations": An array of formal escalation actions required by policy. Each entry must have:
-  - "escalation_id": string — unique identifier, e.g. "ESC-001"
-  - "rule": string — the policy rule being triggered, e.g. "AT-002"
-  - "trigger": string — what caused this escalation
-  - "escalate_to": string — the role or person to escalate to
-  - "blocking": boolean — true if the request cannot proceed until resolved
-
-"reasonings": An array of reasoning steps documenting how you reached your conclusions. Each entry must have:
-  - "step_id": string — sequential identifier, e.g. "R-001"
-  - "aspect": string — the dimension being evaluated, e.g. "Budget Sufficiency", "Lead Time", "Policy Compliance"
-  - "reasoning": string — a clear, concise explanation of your analysis for this aspect
-
-"policy_violations": An array of policy rules that are violated by this request. Each entry must have:
-  - "policy": string — the policy identifier or name, e.g. "AT-002", "Single-Source Rule"
-  - "description": string — a brief explanation of why this policy is violated
-
-Return only valid JSON matching this structure exactly. Do not include any explanation, markdown, or text outside the JSON object.`;
-
-// Sample input shape — replace with real schema as the system evolves
-const SAMPLE_INPUT = {
-  request_id: "REQ-000001",
-  category: "IT / Laptops",
-  quantity: 10,
-  budget_amount: 5000,
-  currency: "EUR",
-  delivery_country: "DE",
-  preferred_supplier: "Dell",
-  requester_instruction: "single supplier only",
-};
-
-type AnalyzeInput = typeof SAMPLE_INPUT;
+Do not include any explanation, markdown, or fields outside this structure.`;
 
 export async function POST(req: NextRequest) {
-  const body: AnalyzeInput = await req.json();
+  const body: unknown = await req.json();
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  console.log("[translate] input text:", text.slice(0, 200));
 
   const completion = await client.chat.completions.create({
     model: "gpt-4o",
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: PROMPT },
-      { role: "user", content: JSON.stringify(body) },
+      { role: "user", content: text },
     ],
   });
 
   const result = JSON.parse(completion.choices[0].message.content ?? "{}");
+  console.log("[translate] output request_text:", result?.request_interpretation?.request_text?.slice(0, 200));
   return NextResponse.json(result);
 }

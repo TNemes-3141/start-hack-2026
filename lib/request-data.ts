@@ -1,7 +1,26 @@
+export type RequestInterpretation = {
+  request_text?: string;           // populated by translate node
+  category_l1?: string;
+  category_l2?: string;
+  quantity?: number;
+  unit_of_measure?: string;
+  budget_amount?: number;
+  currency?: string;
+  delivery_country?: string;
+  required_by_date?: string;
+  days_until_required?: number;
+  data_residency_required?: boolean;
+  esg_requirement?: boolean;
+  preferred_supplier_stated?: string;
+  incumbent_supplier?: string;
+  requester_instruction?: string;
+  [key: string]: unknown;          // allow extra fields from arbitrary uploads
+};
+
 export type RequestData = {
   request_id: string;
   processed_at: string;
-  request_interpretation: unknown;
+  request_interpretation: RequestInterpretation;
   validation: {
     completeness: string;
     issues_detected: { issue_id: string; severity: string; type: string; description: string; action_required: string }[];
@@ -30,7 +49,7 @@ export type RequestData = {
   audit_trail: { policies_checked: string[]; supplier_ids_evaluated: string[]; pricing_tiers_applied: string; data_sources_used: string[]; historical_awards_consulted: boolean; historical_award_note: string };
 };
 
-export function createRequestData(requestInterpretation: unknown = null): RequestData {
+export function createRequestData(requestInterpretation: RequestInterpretation = {}): RequestData {
   return {
     request_id: "",
     processed_at: "",
@@ -62,6 +81,15 @@ export function mergeRequestData(prev: RequestData, patch: Partial<RequestData>)
     const val = patch[key];
     if (Array.isArray(next[key]) && Array.isArray(val)) {
       (next[key] as unknown[]) = [...(next[key] as unknown[]), ...val];
+    } else if (
+      val !== null && typeof val === "object" && !Array.isArray(val) &&
+      next[key] !== null && typeof next[key] === "object" && !Array.isArray(next[key])
+    ) {
+      // shallow-merge nested objects so e.g. request_interpretation.request_text doesn't wipe siblings
+      (next[key] as Record<string, unknown>) = {
+        ...(next[key] as Record<string, unknown>),
+        ...(val as Record<string, unknown>),
+      };
     } else if (val !== undefined) {
       (next[key] as unknown) = val;
     }

@@ -2,31 +2,43 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { createRequestData, mergeRequestData, type RequestData } from "@/lib/request-data";
-import { genericCall, callApiParallel } from "@/lib/api-calls";
+import { createRequestData, mergeRequestData, type RequestData, type RequestInterpretation } from "@/lib/request-data";
+import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall } from "@/lib/api-calls";
 
 async function core_agent(
-  uploadedJson: unknown,
+  uploadedJson: RequestInterpretation,
   onUpdate: (patch: Partial<RequestData>) => void,
 ) {
-  console.log("Loaded JSON:", uploadedJson);
+  let currentData = createRequestData(uploadedJson);
+  console.log("[core_agent] starting pipeline with:", currentData.request_interpretation);
 
-  // --- Sequential call ---
-  const analysis = await genericCall(uploadedJson);
-  onUpdate(analysis);
+  const interp = currentData.request_interpretation;
 
-  // --- Parallel calls example (uncomment and add more as needed) ---
-  // await callApiParallel([
-  //   anotherCall(uploadedJson),
-  //   yetAnotherCall(uploadedJson),
-  // ], onUpdate);
+  function namedUpdate(node: string) {
+    return (patch: Partial<RequestData>) => {
+      console.group(`[${node}] finished`);
+      console.log("patch:", patch);
+      currentData = mergeRequestData(currentData, patch);
+      console.log("request_data after merge:", currentData);
+      console.groupEnd();
+      onUpdate(patch);
+    };
+  }
+
+  // --- Parallel: translate + internal coherence + missing data + product availability ---
+  await Promise.all([
+    translateCall(interp.request_text ?? "").then(namedUpdate("translate")),
+    internalCoherenceCall(interp).then(namedUpdate("internal_coherence")),
+    missingRequiredDataCall(interp).then(namedUpdate("missing_required_data")),
+    checkAvailableProductsCall(interp).then(namedUpdate("check_available_products")),
+  ]);
 
   // --- Next sequential step goes here ---
 }
 
 export default function TestCorePage() {
   const [fileName, setFileName] = useState<string | null>(null);
-  const [uploadedJson, setUploadedJson] = useState<unknown>(null);
+  const [uploadedJson, setUploadedJson] = useState<RequestInterpretation | null>(null);
   const [requestData, setRequestData] = useState<RequestData>(createRequestData());
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -45,8 +57,12 @@ export default function TestCorePage() {
   }
 
   function handleUpdate(patch: Partial<RequestData>) {
-    setRequestData((prev) => mergeRequestData(prev, patch));
-    console.log(requestData)
+    console.log("[node update] patch received:", patch);
+    setRequestData((prev) => {
+      const next = mergeRequestData(prev, patch);
+      console.log("[node update] request_data after merge:", next);
+      return next;
+    });
   }
 
   return (
@@ -71,9 +87,9 @@ export default function TestCorePage() {
 
       <Button
         onClick={() => {
-          const initial = createRequestData(uploadedJson);
+          const initial = createRequestData(uploadedJson ?? undefined);
           setRequestData(initial);
-          core_agent(uploadedJson, handleUpdate);
+          core_agent(uploadedJson ?? {}, handleUpdate);
         }}
       >
         Run core_agent
