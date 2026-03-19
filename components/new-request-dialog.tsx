@@ -104,7 +104,7 @@ const REQUIRED_FIELDS: Array<keyof ClientRequestForm> = [
 
 const CONTRACT_TYPE_OPTIONS = ["purchase", "sell"]
 
-export function NewRequestDialog() {
+export function NewRequestDialog({ trigger }: { trigger?: React.ReactNode } = {}) {
   const router = useRouter()
   const { startPipeline } = useRequestStore()
 
@@ -165,7 +165,7 @@ export function NewRequestDialog() {
 
   function handleSubmit() {
     startPipeline(form as RequestInterpretation)
-    setOpen(false)
+    handleOpenChange(false)
     router.push("/dashboard/request")
   }
 
@@ -189,13 +189,15 @@ export function NewRequestDialog() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <SidebarMenuButton
-          tooltip="New Request"
-          className="w-full bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Request</span>
-        </SidebarMenuButton>
+        {trigger ?? (
+          <SidebarMenuButton
+            tooltip="New Request"
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Request</span>
+          </SidebarMenuButton>
+        )}
       </DialogTrigger>
 
       {step === "prompt" ? (

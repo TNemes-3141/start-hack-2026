@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useMemo, useEffect, useRef, useState } from "react"
+import { useTheme } from "next-themes"
 import {
   ReactFlow,
   Background,
@@ -86,7 +87,7 @@ function StatusNode({ data }: NodeProps) {
 
   return (
     <div
-      className={`rounded-md border-2 bg-white px-3 py-2 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${border}`}
+      className={`rounded-md border-2 bg-card text-card-foreground px-3 py-2 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${border}`}
       style={{ width: 240 }}
     >
       <Handle type="target" position={Position.Top} className="bg-border! border-border!" />
@@ -578,6 +579,9 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function RequestPage() {
   const { nodeStatuses, requestData, isPipelineRunning } = useRequestStore()
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
   const [selectedNodeId, setSelectedNodeId] = useState<NodeId | null>(null)
   // Keep the last non-null nodeId so the panel content doesn't blank mid-close-animation
   const lastNodeId = useRef<NodeId | null>(null)
@@ -640,6 +644,7 @@ export default function RequestPage() {
           nodeTypes={nodeTypes}
           onNodeClick={onNodeClick}
           onInit={onInit}
+          colorMode={mounted && resolvedTheme === "dark" ? "dark" : "light"}
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}
@@ -648,15 +653,7 @@ export default function RequestPage() {
           zoomActivationKeyCode="Control"
         >
           <Background color="var(--border)" gap={24} />
-          <Controls
-            showInteractive={false}
-            style={{
-              backgroundColor: "var(--card)",
-              border: "1px solid var(--border)",
-              color: "var(--card-foreground)",
-              borderRadius: "var(--radius)",
-            }}
-          />
+          <Controls showInteractive={false} />
         </ReactFlow>
       </div>
 
