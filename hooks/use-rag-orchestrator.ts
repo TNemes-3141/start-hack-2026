@@ -8,6 +8,7 @@ import {
   createRequestData,
   mergeRequestData,
   type RequestData,
+  type RequestDataPatch,
   type RequestInterpretation,
   type StageId,
 } from "@/lib/request-data";
@@ -37,6 +38,7 @@ export type RAGOrchestratorState = {
   startPipeline: (form: RequestInterpretation) => Promise<string>;
   approveAndResume: (existingRunId: string, existingData: RequestData, approvedByLabel: string) => Promise<void>;
   resolveIssue: (runId: string, data: RequestData, existingNodeStatuses: NodeStatuses, stageKey: string, issueId: string) => Promise<void>;
+  resolveEscalations: (runId: string, data: RequestData, existingNodeStatuses: NodeStatuses, approvedByLabel: string, targetMatchers: string[]) => Promise<void>;
 };
 
 type RunRow = {
@@ -220,8 +222,25 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     }
     try {
       await core_agent(form, (nodeName, patch) => {
+        // When running with approval, strip blocking flags so no escalation stays
+        // blocking in the stored payload and the run reaches "done" cleanly.
+        const effectivePatch: RequestDataPatch = skipBlockingChecks && patch.stages
+          ? {
+              ...patch,
+              stages: Object.fromEntries(
+                Object.entries(patch.stages).map(([sid, s]) => [
+                  sid,
+                  {
+                    ...s,
+                    escalations: (s.escalations ?? []).map((e) => ({ ...e, blocking: false })),
+                    issues:      (s.issues      ?? []).map((i) => ({ ...i, blocking: false })),
+                  },
+                ]),
+              ),
+            }
+          : patch;
         // Compute next state from refs — synchronous, no stale closures.
-        const nextData    = mergeRequestData(dataRef.current, patch);
+        const nextData    = mergeRequestData(dataRef.current, effectivePatch);
         const graphId     = NODE_NAME_TO_GRAPH_ID[nodeName];
         const nodeStatus  = graphId ? deriveStatus(nodeName, patch) : undefined;
         // On an approved/resumed run, treat blocking nodes as warnings so propagation continues.
@@ -382,5 +401,117 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     void runPipeline(runId, updatedInterp, true, { data: updatedDataWithNote, completedStages });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { runId, requestData, nodeStatuses, isPipelineRunning, mode: "owner", startPipeline, approveAndResume, resolveIssue };
+  // ── Resolve escalations targeted at a specific role and resume in-place ─────
+  //
+  // Unlike approveAndResume (which wipes data and restarts from scratch), this
+  // function marks only the matching blocking escalations/issues as resolved,
+  // then resumes from the furthest completed stage — identical to resolveIssue.
+
+  const resolveEscalations = useCallback(async (
+    runId: string,
+    data: RequestData,
+    existingNodeStatuses: NodeStatuses,
+    approvedByLabel: string,
+    targetMatchers: string[],
+  ): Promise<void> => {
+    const matches = (target: string) =>
+      targetMatchers.length === 0 ||
+      targetMatchers.some((t) => target?.toLowerCase().includes(t.toLowerCase()));
+
+    // Clear blocking flag on all matched escalations and issues.
+    const updatedData: RequestData = {
+      ...data,
+      stages: Object.fromEntries(
+        Object.entries(data.stages).map(([stageKey, stage]) => [
+          stageKey,
+          {
+            ...stage,
+            escalations: (stage.escalations ?? []).map((e) =>
+              e.blocking && matches(e.escalate_to) ? { ...e, blocking: false } : e,
+            ),
+            issues: (stage.issues ?? []).map((i) =>
+              i.blocking && matches(i.escalate_to) ? { ...i, blocking: false, resolved: true } : i,
+            ),
+          },
+        ]),
+      ),
+    } as RequestData;
+
+    await patchRun(runId, { context_payload: updatedData });
+
+    // If other blocking escalations/issues remain (from a different role), stop here.
+    const stillBlocked = Object.values(updatedData.stages).some(
+      (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
+    );
+    if (stillBlocked) return;
+
+    const approvalNote = `Resolved by ${approvedByLabel} on ${new Date().toISOString().slice(0, 10)}`;
+    const updatedInterp: RequestInterpretation = {
+      ...updatedData.request_interpretation,
+      requester_instruction: approvalNote,
+    };
+
+    // Stages that were in "escalation" state must RE-RUN (not be skipped) so their
+    // subsequent steps execute properly.  Clear their stale stage results now so the
+    // re-run produces a fresh, non-duplicated record.  Top-level computed fields
+    // (approval_tier, eligible_suppliers, etc.) are unaffected.
+    const escalationGraphIds = new Set(
+      Object.entries(existingNodeStatuses)
+        .filter(([, v]) => v === "escalation")
+        .map(([k]) => k),
+    );
+    const graphIdToStageName = Object.fromEntries(
+      Object.entries(NODE_NAME_TO_GRAPH_ID).map(([name, gid]) => [gid, name]),
+    );
+    const escalationStageNames = new Set(
+      [...escalationGraphIds].map((gid) => graphIdToStageName[gid]).filter(Boolean),
+    );
+
+    const dataForResume: RequestData = {
+      ...updatedData,
+      request_interpretation: updatedInterp,
+      stages: Object.fromEntries(
+        Object.entries(updatedData.stages).map(([k, v]) => [
+          k,
+          escalationStageNames.has(k)
+            ? { issues: [], escalations: [], reasonings: [], policy_violations: [] }
+            : v,
+        ]),
+      ),
+    } as RequestData;
+
+    // Skip only stages that completed cleanly (done/warning).
+    // Escalation-state nodes are excluded so they re-run with skipBlockingChecks=true.
+    const statusesForSkip = Object.fromEntries(
+      Object.entries(existingNodeStatuses).map(([k, v]) => [k, v === "escalation" ? "outstanding" : v]),
+    ) as NodeStatuses;
+    const completedStages = computeCompletedStages(statusesForSkip);
+
+    // Keep existing node statuses; reset "working" and "escalation" nodes to "outstanding".
+    const initStatuses: NodeStatuses = Object.fromEntries(
+      Object.entries(existingNodeStatuses).map(([k, v]) =>
+        [k, (v === "working" || v === "escalation") ? "outstanding" : v],
+      ),
+    ) as NodeStatuses;
+
+    await patchRun(runId, {
+      status:            "resuming",
+      context_payload:   dataForResume,
+      node_statuses:     initStatuses,
+      active_client_id:  CLIENT_ID,
+      last_heartbeat_at: new Date().toISOString(),
+    });
+
+    dataRef.current     = dataForResume;
+    statusesRef.current = initStatuses;
+    setRunId(runId);
+    setRequestData(dataForResume);
+    setNodeStatuses(initStatuses);
+    setIsPipelineRunning(true);
+    startHeartbeat(runId);
+
+    void runPipeline(runId, updatedInterp, true, { data: dataForResume, completedStages });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { runId, requestData, nodeStatuses, isPipelineRunning, mode: "owner", startPipeline, approveAndResume, resolveIssue, resolveEscalations };
 }

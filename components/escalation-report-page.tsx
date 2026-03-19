@@ -28,7 +28,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser"
 import { createRequestData, type RequestData, type ShortlistEntry } from "@/lib/request-data"
 import { Badge } from "@/components/ui/badge"
 import { useRequestStore } from "@/lib/request-store"
-import type { NodeStatuses } from "@/lib/pipeline-graph"
+import { INITIAL_STATUSES, type NodeStatuses } from "@/lib/pipeline-graph"
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -199,13 +199,16 @@ function EscalationReportCard({
   run,
   targets,
   roleLabel,
+  onAbort,
 }: {
   run: RunRow
   targets: string[]
   roleLabel: string
+  onAbort: (runId: string) => void
 }) {
-  const { approveAndResume } = useRequestStore()
-  const [approving, setApproving] = useState(false)
+  const { resolveEscalations } = useRequestStore()
+  const [resolving, setResolving] = useState(false)
+  const [aborting, setAborting]   = useState(false)
 
   const data = run.context_payload ?? createRequestData()
   const interp = data.request_interpretation
@@ -221,16 +224,27 @@ function EscalationReportCard({
 
   const title = interp?.title || interp?.category_l2 || "Untitled Request"
   const { label: statusLabel, badge: statusBadge } = getStatusMeta(run.status)
-  const isBlocked = run.status === "blocked"
 
-  async function handleApprove() {
-    setApproving(true)
+  async function handleResolve() {
+    setResolving(true)
     try {
-      await approveAndResume(run.id, data, roleLabel)
+      await resolveEscalations(run.id, data, run.node_statuses ?? INITIAL_STATUSES, roleLabel, targets)
     } finally {
-      setApproving(false)
+      setResolving(false)
     }
   }
+
+  async function handleAbort() {
+    setAborting(true)
+    try {
+      const res = await fetch(`/api/runs/${run.id}`, { method: "DELETE" })
+      if (res.ok) onAbort(run.id)
+    } finally {
+      setAborting(false)
+    }
+  }
+
+  const actionBusy = resolving || aborting
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -259,43 +273,57 @@ function EscalationReportCard({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Badge variant={statusBadge} className="text-[10px]">{statusLabel}</Badge>
-            {isBlocked && (
-              <button
-                onClick={handleApprove}
-                disabled={approving}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              >
-                {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="h-3.5 w-3.5" />}
-                {approving ? "Approving…" : "Approve & Resume"}
-              </button>
-            )}
-          </div>
+          <Badge variant={statusBadge} className="text-[10px] shrink-0">{statusLabel}</Badge>
         </div>
       </div>
 
       <div className="p-6 flex flex-col gap-4">
 
-        {/* ── Escalation reasons ── */}
+        {/* ── Escalation triggers with per-row actions ── */}
         <Section title="Escalation Triggers" icon={ShieldAlert} defaultOpen={true}>
           {myEscalations.length === 0 ? (
             <p className="text-xs text-muted-foreground">No escalations targeted at your role found.</p>
           ) : (
             <div className="flex flex-col gap-2">
               {myEscalations.map((e, i) => (
-                <div key={i} className="flex items-start gap-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-                  <ShieldAlert className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      {e.rule && (
-                        <span className="font-mono text-[11px] font-semibold bg-muted rounded px-1.5 py-0.5 text-muted-foreground">{e.rule}</span>
-                      )}
-                      <span className="text-[11px] text-muted-foreground">{e.stageLabel}</span>
+                <div key={i} className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+                  <div className="flex items-start gap-3">
+                    <ShieldAlert className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        {e.rule && (
+                          <span className="font-mono text-[11px] font-semibold bg-muted rounded px-1.5 py-0.5 text-muted-foreground">{e.rule}</span>
+                        )}
+                        <span className="text-[11px] text-muted-foreground">{e.stageLabel}</span>
+                      </div>
+                      <p className="text-sm text-foreground leading-snug">{e.trigger}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Target: <span className="font-medium text-foreground">{e.escalate_to}</span></p>
                     </div>
-                    <p className="text-sm text-foreground leading-snug">{e.trigger}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Target: <span className="font-medium text-foreground">{e.escalate_to}</span></p>
                   </div>
+                  {/* Actions — only shown on the first escalation row to avoid repeating per-run actions */}
+                  {i === 0 && (
+                    <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-destructive/10">
+                      <button
+                        onClick={handleResolve}
+                        disabled={actionBusy}
+                        className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                      >
+                        {resolving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="h-3.5 w-3.5" />}
+                        {resolving ? "Resolving…" : "Resolve"}
+                      </button>
+                      <button
+                        onClick={handleAbort}
+                        disabled={actionBusy}
+                        className="flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50 transition-colors"
+                      >
+                        {aborting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+                        {aborting ? "Aborting…" : "Abort"}
+                      </button>
+                      <span className="text-[11px] text-muted-foreground ml-1">
+                        Resolve resumes the procurement pipeline · Abort permanently deletes this request
+                      </span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -692,25 +720,6 @@ function EscalationReportCard({
           </Section>
         )}
 
-        {/* ── Footer action ── */}
-        {isBlocked && (
-          <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Action Required</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                This request is awaiting your approval to continue the procurement pipeline.
-              </p>
-            </div>
-            <button
-              onClick={handleApprove}
-              disabled={approving}
-              className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
-            >
-              {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CircleCheck className="h-4 w-4" />}
-              {approving ? "Approving…" : "Approve & Resume Pipeline"}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   )
@@ -732,6 +741,10 @@ export function EscalationReportPage({
   useEffect(() => { escalateToRef.current = escalateTo }, [escalateTo])
 
   const runs = allRuns.filter((r) => runHasEscalationFor(r, escalateTo))
+
+  function handleAbort(runId: string) {
+    setAllRuns((prev) => prev.filter((r) => r.id !== runId))
+  }
 
   const fetchRuns = useCallback(async () => {
     setLoading(true)
@@ -815,6 +828,7 @@ export function EscalationReportPage({
                 run={run}
                 targets={escalateTo}
                 roleLabel={roleLabel}
+                onAbort={handleAbort}
               />
             ))}
           </div>

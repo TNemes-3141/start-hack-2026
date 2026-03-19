@@ -69,8 +69,8 @@ export default function LandingPage() {
       </div>
 
       <main className="relative z-10 mx-auto grid min-h-screen w-full grid-cols-1 items-center p-8 text-center lg:grid-cols-12 lg:grid-rows-12">
-        <h1 className="w-full max-w-4xl text-left text-[9vw] text font-medium leading-none lg:col-start-1 lg:col-span-8 lg:row-start-1 lg:row-span-5 lg:self-start">
-          TEST
+        <h1 className="w-full max-w-4xl text-left text-[7vw] text font-medium leading-none lg:col-start-1 lg:col-span-8 lg:row-start-1 lg:row-span-5 lg:self-start">
+          PENROSE PROCUREMENT
         </h1>
         <p className="w-full text-justify max-w-3xl text-sm text-muted-foreground sm:text-base lg:col-start-9 lg:col-span-4 lg:row-start-7 lg:row-span-2 lg:self-end pb-10">
           Penrose Function turns market complexity into clarity, combining data,
