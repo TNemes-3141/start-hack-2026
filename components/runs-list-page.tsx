@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert } from "lucide-react"
+import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown } from "lucide-react"
 import { supabaseBrowser } from "@/lib/supabase-browser"
 import { PipelineGraphView } from "@/components/pipeline-graph-view"
 import { INITIAL_STATUSES, type NodeStatuses } from "@/lib/pipeline-graph"
@@ -71,6 +71,29 @@ function isClosed(status: string) {
 // ── Run card ──────────────────────────────────────────────────────────────────
 
 function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
+  const [downloading, setDownloading] = useState(false)
+
+  async function downloadPdf(e: React.MouseEvent) {
+    e.stopPropagation()
+    setDownloading(true)
+    try {
+      const res = await fetch("/api/generate_text_summary_for_client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(run.context_payload),
+      })
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `procurement-report-${run.context_payload?.request_id ?? run.id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const interp   = run.context_payload?.request_interpretation
   const title    = interp?.title || interp?.category_l2 || "Untitled Request"
   const catL1    = interp?.category_l1
@@ -133,8 +156,20 @@ function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
         </div>
       </div>
 
-      <div className="flex items-center pr-3 pl-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      <div className="flex items-center gap-1 pr-3 pl-1">
+        {isClosed(run.status) && (
+          <button
+            onClick={downloadPdf}
+            disabled={downloading}
+            title="Download PDF report"
+            className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
+          >
+            {downloading
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <FileDown className="h-4 w-4" />}
+          </button>
+        )}
+        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
     </button>
   )
