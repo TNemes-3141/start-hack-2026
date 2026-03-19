@@ -79,14 +79,11 @@ export async function precedenceLookupCall(input: unknown): Promise<RequestDataP
   };
 }
 
-// Stubs for upcoming nodes — wire up endpoints as they are built
-// export const inappropriateRequestsCall   = (input: unknown) => fetchApi("/api/inappropriate_requests",   input).then(r => wrapStage("inappropriate_requests",   r));
-// export const applyCategoryRulesCall      = (input: unknown) => fetchApi("/api/apply_category_rules",      input).then(r => wrapStage("apply_category_rules",      r));
-// export const approvalTierCall            = (input: unknown) => fetchApi("/api/approval_tier",            input).then(r => wrapStage("approval_tier",            r));
-// export const precedenceLookupCall        = (input: unknown) => fetchApi("/api/precedence_lookup",        input).then(r => wrapStage("precedence_lookup",        r));
-// export const purelyEligibleSuppliersCall = (input: unknown) => fetchApi("/api/purely_eligible_suppliers", input).then(r => wrapStage("purely_eligible_suppliers", r));
-// export const restrictedSuppliersCall     = (input: unknown) => fetchApi("/api/restricted_suppliers",     input).then(r => wrapStage("restricted_suppliers",     r));
-// export const checkEligibleSuppliersCall  = (input: unknown) => fetchApi("/api/check_eligible_suppliers",  input).then(r => wrapStage("check_eligible_suppliers",  r));
-// export const pricingCalculationCall      = (input: unknown) => fetchApi("/api/pricing_calculation",      input).then(r => wrapStage("pricing_calculation",      r));
-// export const reevaluateTierCall          = (input: unknown) => fetchApi("/api/reevaluate_tier_from_quote", input).then(r => wrapStage("reevaluate_tier_from_quote", r));
-// export const scoringAndRankingCall       = (input: unknown) => fetchApi("/api/scoring_and_ranking",       input).then(r => wrapStage("scoring_and_ranking",       r));
+export const restrictedSuppliersCall        = (input: unknown) => fetchApi("/api/restricted_suppliers",         input).then(r => wrapStage("restricted_suppliers",         r));
+export const geographicalRulesCall          = (input: unknown) => fetchApi("/api/geographical_rules",           input).then(r => wrapStage("geographical_rules",           r));
+export const evaluatePreferredSupplierCall  = (input: unknown) => fetchApi("/api/evaluate_preferred_supplier",  input).then(r => wrapStage("evaluate_preferred_supplier",  r));
+export const applyDynamicCategoryRulesCall  = (input: unknown) => fetchApi("/api/apply_dynamic_category_rules", input).then(r => wrapStage("apply_dynamic_category_rules", r));
+export const pricingCalculationCall         = (input: unknown) => fetchApi("/api/pricing_calculation",          input).then(r => wrapStage("pricing_calculation",          r));
+export const reevaluateTierCall             = (input: unknown) => fetchApi("/api/reevaluate_tier_from_quote",   input).then(r => wrapStage("reevaluate_tier_from_quote",   r));
+export const scoringAndRankingCall          = (input: unknown) => fetchApi("/api/scoring_and_ranking",          input).then(r => wrapStage("scoring_and_ranking",          r));
+export const finalCheckCall                 = (input: unknown) => fetchApi("/api/final_check",                  input).then(r => wrapStage("final_check",                  r));

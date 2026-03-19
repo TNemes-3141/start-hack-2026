@@ -43,9 +43,9 @@ type NodeId =
   | "request-submitted" | "translation" | "internal-coherence"
   | "missing-required-data" | "check-available-products" | "inappropriate-requests"
   | "apply-cat-rules-1" | "approval-tier" | "precedence-lookup"
-  | "purely-eligible-suppliers" | "restricted-suppliers" | "check-eligible-supplier"
-  | "apply-cat-rules-2" | "pricing-calculation" | "re-evaluate-tier"
-  | "scoring-ranking" | "final-check" | "done"
+  | "purely-eligible-suppliers" | "restricted-suppliers" | "geographical-rules"
+  | "evaluate-preferred-supplier" | "apply-cat-rules-2" | "pricing-calculation"
+  | "re-evaluate-tier" | "scoring-ranking" | "final-check" | "done"
 
 // --- Elapsed timer component ---
 
@@ -118,9 +118,10 @@ const nodeLabels: Record<NodeId, string> = {
   "approval-tier":              "Approval Tier",
   "precedence-lookup":          "Precedence Lookup",
   "purely-eligible-suppliers":  "Purely Eligible Suppliers",
-  "restricted-suppliers":       "Restricted Suppliers",
-  "check-eligible-supplier":    "Check Eligible Supplier",
-  "apply-cat-rules-2":          "Apply Category Rules",
+  "restricted-suppliers":        "Restricted Suppliers",
+  "geographical-rules":          "Geographical Rules",
+  "evaluate-preferred-supplier": "Evaluate Preferred Supplier",
+  "apply-cat-rules-2":           "Apply Dynamic Category Rules",
   "pricing-calculation":        "Pricing Calculation",
   "re-evaluate-tier":           "Re-evaluate Tier from Quote",
   "scoring-ranking":            "Scoring and Ranking",
@@ -151,15 +152,19 @@ const nodeDefinitions: Omit<Node, "data">[] = [
   { id: "approval-tier",             type: "status", position: { x: 360, y: 760  } },
 
   // ── Rest (sequential) ──────────────────────────────────────────────────────
-  { id: "purely-eligible-suppliers", type: "status", position: { x: 200, y: 900  } },
-  { id: "restricted-suppliers",      type: "status", position: { x: 50,  y: 1020 } },
-  { id: "check-eligible-supplier",   type: "status", position: { x: 360, y: 1020 } },
-  { id: "apply-cat-rules-2",         type: "status", position: { x: 200, y: 1140 } },
-  { id: "pricing-calculation",       type: "status", position: { x: 200, y: 1260 } },
-  { id: "re-evaluate-tier",          type: "status", position: { x: 200, y: 1380 } },
-  { id: "scoring-ranking",           type: "status", position: { x: 200, y: 1500 } },
-  { id: "final-check",               type: "status", position: { x: 200, y: 1620 } },
-  { id: "done",                      type: "status", position: { x: 200, y: 1740 } },
+  { id: "purely-eligible-suppliers",   type: "status", position: { x: 200, y: 900  } },
+  // Branch A: restricted → geographical (sequential)
+  { id: "restricted-suppliers",        type: "status", position: { x: 50,  y: 1020 } },
+  { id: "geographical-rules",          type: "status", position: { x: 50,  y: 1140 } },
+  // Branch B: evaluate preferred supplier
+  { id: "evaluate-preferred-supplier", type: "status", position: { x: 360, y: 1020 } },
+  // Fan-in
+  { id: "apply-cat-rules-2",           type: "status", position: { x: 200, y: 1280 } },
+  { id: "pricing-calculation",         type: "status", position: { x: 200, y: 1400 } },
+  { id: "re-evaluate-tier",            type: "status", position: { x: 200, y: 1520 } },
+  { id: "scoring-ranking",             type: "status", position: { x: 200, y: 1640 } },
+  { id: "final-check",                 type: "status", position: { x: 200, y: 1760 } },
+  { id: "done",                        type: "status", position: { x: 200, y: 1880 } },
 ]
 
 const edges: Edge[] = [
@@ -186,11 +191,14 @@ const edges: Edge[] = [
   { id: "e-acr1-pes", source: "apply-cat-rules-1",         target: "purely-eligible-suppliers" },
   { id: "e-at-pes",   source: "approval-tier",             target: "purely-eligible-suppliers" },
 
-  // Rest (sequential / existing)
-  { id: "e-pes-rs",   source: "purely-eligible-suppliers", target: "restricted-suppliers" },
-  { id: "e-pes-ces",  source: "purely-eligible-suppliers", target: "check-eligible-supplier" },
-  { id: "e-rs-acr2",  source: "restricted-suppliers",      target: "apply-cat-rules-2" },
-  { id: "e-ces-acr2", source: "check-eligible-supplier",   target: "apply-cat-rules-2" },
+  // Group 3: two parallel branches fan out from purely-eligible-suppliers
+  { id: "e-pes-rs",   source: "purely-eligible-suppliers",   target: "restricted-suppliers" },
+  { id: "e-pes-eps",  source: "purely-eligible-suppliers",   target: "evaluate-preferred-supplier" },
+  // Branch A: restricted → geographical
+  { id: "e-rs-gr",    source: "restricted-suppliers",        target: "geographical-rules" },
+  // Fan-in to apply-cat-rules-2
+  { id: "e-gr-acr2",  source: "geographical-rules",          target: "apply-cat-rules-2" },
+  { id: "e-eps-acr2", source: "evaluate-preferred-supplier", target: "apply-cat-rules-2" },
   { id: "e-acr2-pc",  source: "apply-cat-rules-2",         target: "pricing-calculation" },
   { id: "e-pc-ret",   source: "pricing-calculation",       target: "re-evaluate-tier" },
   { id: "e-ret-sr",   source: "re-evaluate-tier",          target: "scoring-ranking" },
@@ -212,9 +220,10 @@ const nodeToStageId: Partial<Record<NodeId, string>> = {
   "approval-tier":             "approval_tier",
   "precedence-lookup":         "precedence_lookup",
   "purely-eligible-suppliers": "purely_eligible_suppliers",
-  "restricted-suppliers":      "restricted_suppliers",
-  "check-eligible-supplier":   "check_eligible_suppliers",
-  "pricing-calculation":       "pricing_calculation",
+  "restricted-suppliers":        "restricted_suppliers",
+  "geographical-rules":          "geographical_rules",
+  "evaluate-preferred-supplier": "evaluate_preferred_supplier",
+  "pricing-calculation":         "pricing_calculation",
   "re-evaluate-tier":          "reevaluate_tier_from_quote",
   "scoring-ranking":           "scoring_and_ranking",
   "final-check":               "scoring_and_ranking",
@@ -264,7 +273,7 @@ function NodeDetailPanel({
 
   // Node-specific extra sections
   const showApprovalTier = nodeId === "approval-tier"
-  const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "check-eligible-supplier", "pricing-calculation", "scoring-ranking"].includes(nodeId)
+  const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "geographical-rules", "evaluate-preferred-supplier", "apply-cat-rules-2", "pricing-calculation", "scoring-ranking"].includes(nodeId)
   const showRecommendation = nodeId === "final-check" || nodeId === "done"
   const showAuditTrail = nodeId === "done"
 
@@ -573,8 +582,7 @@ export default function RequestPage() {
   }, [])
 
   const onInit = useCallback((instance: ReactFlowInstance) => {
-    // Center the viewport on the Request Submitted node (x=200, width=240 → centerX=320; y=0, height≈60 → centerY=30)
-    instance.setCenter(320, 30, { zoom: 1 })
+    instance.fitView({ nodes: [{ id: "request-submitted" }], padding: 3, maxZoom: 1, duration: 0 })
   }, [])
 
   return (

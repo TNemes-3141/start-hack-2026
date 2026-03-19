@@ -49,10 +49,13 @@ export type StageId =
   | "precedence_lookup"
   | "purely_eligible_suppliers"
   | "restricted_suppliers"
-  | "check_eligible_suppliers"
+  | "geographical_rules"
+  | "evaluate_preferred_supplier"
+  | "apply_dynamic_category_rules"
   | "pricing_calculation"
   | "reevaluate_tier_from_quote"
-  | "scoring_and_ranking";
+  | "scoring_and_ranking"
+  | "final_check";
 
 export type Stages = Record<StageId, NodeResult>;
 
@@ -229,10 +232,13 @@ function emptyStages(): Stages {
     precedence_lookup: emptyNodeResult(),
     purely_eligible_suppliers: emptyNodeResult(),
     restricted_suppliers: emptyNodeResult(),
-    check_eligible_suppliers: emptyNodeResult(),
+    geographical_rules: emptyNodeResult(),
+    evaluate_preferred_supplier: emptyNodeResult(),
+    apply_dynamic_category_rules: emptyNodeResult(),
     pricing_calculation: emptyNodeResult(),
     reevaluate_tier_from_quote: emptyNodeResult(),
     scoring_and_ranking: emptyNodeResult(),
+    final_check: emptyNodeResult(),
   };
 }
 

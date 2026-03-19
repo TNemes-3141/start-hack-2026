@@ -1,5 +1,5 @@
 import { createRequestData, mergeRequestData, type RequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
-import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall, approvalTierCall, purelyEligibleSuppliersCall } from "@/lib/api-calls";
+import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall, approvalTierCall, purelyEligibleSuppliersCall, restrictedSuppliersCall, geographicalRulesCall, evaluatePreferredSupplierCall, applyDynamicCategoryRulesCall, pricingCalculationCall, reevaluateTierCall, scoringAndRankingCall, finalCheckCall } from "@/lib/api-calls";
 
 function hasBlocking(data: RequestData): boolean {
   return Object.values(data.stages).some(
