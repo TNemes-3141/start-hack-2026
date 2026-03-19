@@ -1,14 +1,6 @@
-"use client"
+import { RunsListPage } from "@/components/runs-list-page"
 
-import { AlertTriangle } from "lucide-react"
-import { EmptyState } from "@/components/empty-state"
-
+// All non-procurement roles see every request that has any escalation.
 export default function EscalationsPage() {
-  return (
-    <EmptyState
-      icon={AlertTriangle}
-      title="No escalations"
-      description="You have no active escalations. Submit a new procurement request to get started."
-    />
-  )
+  return <RunsListPage escalateTo={[]} />
 }

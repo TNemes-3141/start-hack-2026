@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { AlertTriangle, FolderOpen, FolderCheck, Building2 } from "lucide-react"
+import { Building2 } from "lucide-react"
 import {
   SidebarProvider,
   Sidebar,
@@ -24,18 +24,13 @@ import { Separator } from "@/components/ui/separator"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { RequestStoreProvider } from "@/lib/request-store"
 import { NewRequestDialog } from "@/components/new-request-dialog"
+import { getNavItems } from "@/lib/role-config"
+import type { Role } from "@/lib/session"
 
-
-const navItems = [
-  { label: "Escalations", href: "/dashboard/escalations", icon: AlertTriangle },
-  { label: "Open Requests", href: "/dashboard/open-requests", icon: FolderOpen },
-  { label: "Closed Requests", href: "/dashboard/closed-requests", icon: FolderCheck },
-]
-
-
-function AppSidebar() {
+function AppSidebar({ role }: { role?: Role }) {
   const pathname = usePathname()
   const { state } = useSidebar()
+  const navItems = getNavItems(role)
 
   return (
     <Sidebar collapsible="icon">
@@ -45,7 +40,7 @@ function AppSidebar() {
             <Building2 className="h-5 w-5" />
           </div>
           {state === "expanded" && (
-            <span className="font-semibold text-sm">Company Name</span>
+            <span className="font-semibold text-sm">ProcureAI</span>
           )}
         </div>
       </SidebarHeader>
@@ -75,9 +70,11 @@ function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <NewRequestDialog />
-      </SidebarFooter>
+      {role === "procurement" && (
+        <SidebarFooter className="p-3">
+          <NewRequestDialog />
+        </SidebarFooter>
+      )}
     </Sidebar>
   )
 }
@@ -87,9 +84,7 @@ function AppHeader({ roleLabel }: { roleLabel?: string }) {
     <header className="flex h-14 shrink-0 items-center border-b bg-background px-4 gap-2">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="h-4" />
-
       <div className="flex-1" />
-
       <Link href="/" className="flex items-center gap-3 rounded-md px-2 py-1 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
         {roleLabel && (
           <p className="text-sm font-medium hidden sm:block">{roleLabel}</p>
@@ -105,9 +100,11 @@ function AppHeader({ roleLabel }: { roleLabel?: string }) {
 }
 
 export function DashboardShell({
+  role,
   roleLabel,
   children,
 }: {
+  role?: Role
   roleLabel?: string
   children: React.ReactNode
 }) {
@@ -115,7 +112,7 @@ export function DashboardShell({
     <RequestStoreProvider>
       <TooltipProvider>
         <SidebarProvider>
-          <AppSidebar />
+          <AppSidebar role={role} />
           <SidebarInset>
             <AppHeader roleLabel={roleLabel} />
             <main className="flex-1 overflow-auto p-6">

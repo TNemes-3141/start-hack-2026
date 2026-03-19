@@ -1,29 +1,12 @@
 import Link from "next/link"
-import { AlertTriangle, FolderOpen, FolderCheck } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { getSession } from "@/lib/session"
+import { getNavItems } from "@/lib/role-config"
 
-const sections = [
-  {
-    href: "/dashboard/escalations",
-    icon: AlertTriangle,
-    title: "Escalations",
-    description: "Review requests that require immediate attention or approval.",
-  },
-  {
-    href: "/dashboard/open-requests",
-    icon: FolderOpen,
-    title: "Open Requests",
-    description: "Track all active procurement requests currently in progress.",
-  },
-  {
-    href: "/dashboard/closed-requests",
-    icon: FolderCheck,
-    title: "Closed Requests",
-    description: "Browse completed and resolved procurement requests.",
-  },
-]
+export default async function DashboardPage() {
+  const session = await getSession()
+  const navItems = getNavItems(session.role)
 
-export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -31,7 +14,7 @@ export default function DashboardPage() {
         <p className="text-sm text-muted-foreground mt-1">Select a section to get started.</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
-        {sections.map(({ href, icon: Icon, title, description }) => (
+        {navItems.map(({ href, icon: Icon, label, description }) => (
           <Link key={href} href={href}>
             <Card className="h-full transition-colors hover:bg-accent cursor-pointer">
               <CardHeader className="gap-3">
@@ -39,7 +22,7 @@ export default function DashboardPage() {
                   <Icon className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <div>
-                  <CardTitle className="text-base">{title}</CardTitle>
+                  <CardTitle className="text-base">{label}</CardTitle>
                   <CardDescription className="mt-1 text-sm">{description}</CardDescription>
                 </div>
               </CardHeader>

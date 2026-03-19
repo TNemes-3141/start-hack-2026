@@ -188,73 +188,119 @@ function EmptyList({ closed }: { closed: boolean }) {
   )
 }
 
+// ── Escalation filter helpers ─────────────────────────────────────────────────
+
+// Returns true if the run has at least one BLOCKING escalation.
+// When targets is empty, any blocking escalation matches. When targets has entries,
+// at least one blocking escalation's escalate_to must contain one of the target strings.
+function runHasEscalationFor(run: RunRow, targets: string[]): boolean {
+  if (!run.context_payload?.stages) return false
+  for (const stage of Object.values(run.context_payload.stages)) {
+    for (const e of stage.escalations ?? []) {
+      if (!e.blocking) continue
+      if (targets.length === 0) return true
+      if (targets.some((t) => e.escalate_to?.toLowerCase().includes(t.toLowerCase())))
+        return true
+    }
+  }
+  return false
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function RunsListPage({ closed }: { closed: boolean }) {
-  const searchParams   = useSearchParams()
-  const autoRunId      = searchParams.get("run")
-  const didAutoSelect  = useRef(false)
+// escalateTo: when provided, show ALL runs filtered by escalation target (ignores `closed`).
+export function RunsListPage({
+  closed,
+  escalateTo,
+}: {
+  closed?: boolean
+  escalateTo?: string[]
+}) {
+  const isEscalationMode = escalateTo !== undefined
 
-  const [runs, setRuns]               = useState<RunRow[]>([])
+  const searchParams  = useSearchParams()
+  const autoRunId     = searchParams.get("run")
+  const didAutoSelect = useRef(false)
+
+  const [allRuns, setAllRuns]         = useState<RunRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [selectedRun, setSelectedRun] = useState<RunRow | null>(null)
   const [loadingRun, setLoadingRun]   = useState(false)
 
-  // Stable ref so the Realtime handler always has the current selected ID
-  // without needing to be in the dependency array (which would re-subscribe).
-  const selectedIdRef = useRef<string | null>(null)
-  useEffect(() => { selectedIdRef.current = selectedRun?.id ?? null }, [selectedRun])
+  // Derive visible runs: in escalation mode, filter client-side by target.
+  const runs = isEscalationMode
+    ? allRuns.filter((r) => runHasEscalationFor(r, escalateTo))
+    : allRuns
 
-  // ── Fetch list ─────────────────────────────────────────────────────────────
+  // Stable ref so the Realtime handler always has the current selected ID.
+  const selectedIdRef  = useRef<string | null>(null)
+  const escalateToRef  = useRef(escalateTo)
+  useEffect(() => { selectedIdRef.current = selectedRun?.id ?? null }, [selectedRun])
+  useEffect(() => { escalateToRef.current = escalateTo }, [escalateTo])
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
 
   const fetchRuns = useCallback(async () => {
     setLoading(true)
-    const filter = closed ? "status=in.(done,aborted)" : "status=not.in.(done,aborted)"
+    // Escalation mode: fetch all runs (any status). Otherwise filter by bucket.
+    const filter = isEscalationMode
+      ? ""
+      : closed
+        ? "status=in.(done,aborted)&"
+        : "status=not.in.(done,aborted)&"
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/rag_pipeline_runs?${filter}&order=updated_at.desc&limit=100`,
+      `${SUPABASE_URL}/rest/v1/rag_pipeline_runs?${filter}order=updated_at.desc&limit=200`,
       { headers: restHeaders() },
     )
-    if (res.ok) setRuns(await res.json())
+    if (res.ok) setAllRuns(await res.json())
     setLoading(false)
-  }, [closed])
+  }, [closed, isEscalationMode])
 
   useEffect(() => { void fetchRuns() }, [fetchRuns])
 
-  // ── Realtime: stable subscription (no selectedRun in deps) ────────────────
-  // UPDATE events update items in-place — no reordering — to prevent list jumps.
-  // The selected run is tracked via ref so handler is never stale.
+  // ── Realtime ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    const channelKey = isEscalationMode ? "escalations" : closed ? "closed" : "open"
     const channel = supabaseBrowser
-      .channel(`runs-list-${closed ? "closed" : "open"}`)
+      .channel(`runs-list-${channelKey}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "rag_pipeline_runs" }, (payload) => {
         const updated = payload.new as RunRow | undefined
         const removed = payload.old as { id: string } | undefined
 
         if (payload.eventType === "INSERT" && updated) {
-          if (isClosed(updated.status) === closed)
-            setRuns((prev) => [updated, ...prev])
+          if (isEscalationMode) {
+            // Only add if it already has matching escalations (rare on INSERT, but handle it)
+            if (runHasEscalationFor(updated, escalateToRef.current ?? []))
+              setAllRuns((p) => [updated, ...p])
+          } else {
+            if (isClosed(updated.status) === closed)
+              setAllRuns((p) => [updated, ...p])
+          }
 
         } else if (payload.eventType === "UPDATE" && updated) {
-          const movedBucket = isClosed(updated.status) !== closed
-          setRuns((prev) => {
-            if (movedBucket) return prev.filter((r) => r.id !== updated.id)
-            // Update in-place — preserve order, no jumping
-            return prev.map((r) => r.id === updated.id ? updated : r)
+          setAllRuns((prev) => {
+            const exists = prev.some((r) => r.id === updated.id)
+            if (!isEscalationMode) {
+              // Bucket-based: remove if it moved to the other bucket, else update in-place
+              if (isClosed(updated.status) !== closed)
+                return prev.filter((r) => r.id !== updated.id)
+            }
+            // Update in-place (preserve order) or insert at top if newly appeared
+            if (exists) return prev.map((r) => r.id === updated.id ? updated : r)
+            return [updated, ...prev]
           })
-          // Keep the graph view live if this is the selected run
-          if (updated.id === selectedIdRef.current)
-            setSelectedRun(updated)
+          if (updated.id === selectedIdRef.current) setSelectedRun(updated)
 
         } else if (payload.eventType === "DELETE" && removed) {
-          setRuns((prev) => prev.filter((r) => r.id !== removed.id))
+          setAllRuns((p) => p.filter((r) => r.id !== removed.id))
           if (removed.id === selectedIdRef.current) setSelectedRun(null)
         }
       })
       .subscribe()
 
     return () => { void supabaseBrowser.removeChannel(channel) }
-  }, [closed]) // stable — selectedRun tracked via ref above
+  }, [closed, isEscalationMode]) // stable — selectedRun and escalateTo tracked via refs
 
   // ── Auto-select from query param ──────────────────────────────────────────
 
@@ -265,7 +311,7 @@ export function RunsListPage({ closed }: { closed: boolean }) {
     }
   }, [autoRunId, loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Select a run ──────────────────────────────────────────────────────────
+  // ── Select ────────────────────────────────────────────────────────────────
 
   async function selectRun(id: string) {
     setLoadingRun(true)
@@ -277,6 +323,18 @@ export function RunsListPage({ closed }: { closed: boolean }) {
     setSelectedRun(rows[0] ?? null)
     setLoadingRun(false)
   }
+
+  // ── Title ─────────────────────────────────────────────────────────────────
+
+  const pageTitle = isEscalationMode
+    ? "My Escalations"
+    : closed ? "Closed Requests" : "Open Requests"
+
+  const emptyDescription = isEscalationMode
+    ? "No requests have been escalated to you yet."
+    : closed
+      ? "Requests will appear here once they finish processing."
+      : "Submit a new request from the sidebar to kick off the procurement pipeline."
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -310,9 +368,7 @@ export function RunsListPage({ closed }: { closed: boolean }) {
     <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background shrink-0">
         <div>
-          <h1 className="text-base font-semibold text-foreground">
-            {closed ? "Closed Requests" : "Open Requests"}
-          </h1>
+          <h1 className="text-base font-semibold text-foreground">{pageTitle}</h1>
           {!loading && (
             <p className="text-xs text-muted-foreground mt-0.5">
               {runs.length} request{runs.length !== 1 ? "s" : ""}
@@ -336,7 +392,13 @@ export function RunsListPage({ closed }: { closed: boolean }) {
             <span className="text-sm">Loading…</span>
           </div>
         ) : runs.length === 0 ? (
-          <EmptyList closed={closed} />
+          <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center px-8 py-16">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-muted">
+              <GitBranch className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium text-foreground">{pageTitle === "My Escalations" ? "No escalations" : `No ${pageTitle.toLowerCase()}`}</p>
+            <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">{emptyDescription}</p>
+          </div>
         ) : (
           runs.map((run) => (
             <RunCard key={run.id} run={run} onClick={() => void selectRun(run.id)} />

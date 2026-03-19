@@ -5,7 +5,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await getSession()
 
   return (
-    <DashboardShell roleLabel={session.roleLabel}>
+    <DashboardShell role={session.role} roleLabel={session.roleLabel}>
       {children}
     </DashboardShell>
   )

@@ -476,8 +476,8 @@ function NodeDetailPanel({
               <div>
                 <SectionHeader icon={<Info className="h-4 w-4 text-muted-foreground" />} title="Reasonings" />
                 <div className="flex flex-col gap-2">
-                  {reasonings.map((r) => (
-                    <div key={r.step_id} className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-xs">
+                  {reasonings.map((r, i) => (
+                    <div key={r.step_id + i} className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-xs">
                       <span className="font-medium text-foreground">{r.aspect}</span>
                       <p className="text-muted-foreground mt-1">{r.reasoning}</p>
                     </div>
