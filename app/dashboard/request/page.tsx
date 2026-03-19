@@ -71,12 +71,12 @@ function StatusNode({ data }: NodeProps) {
 
   return (
     <div
-      className={`rounded-md border-2 bg-card px-3 py-2 text-card-foreground shadow-sm ${border}`}
-      style={{ minWidth: 180, width: "max-content" }}
+      className={`rounded-md border-2 bg-white px-3 py-2 shadow-sm ${border}`}
+      style={{ width: 240 }}
     >
       <Handle type="target" position={Position.Top} className="bg-border! border-border!" />
       <div className="flex items-center justify-between gap-3">
-        <span className="whitespace-nowrap text-sm font-medium">{data.label as string}</span>
+        <span className="text-sm font-medium">{data.label as string}</span>
         {icon}
       </div>
       {status === "working" && idleSince !== undefined && (

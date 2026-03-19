@@ -78,6 +78,7 @@ export default function LandingPage() {
           confident decisions faster.
         </p>
         <nav className="text-xl flex justify-between lg:col-start-9 lg:col-span-4 lg:row-start-1 lg:row-span-1 pr-14 z-10">
+        <Link href="/procurement" className="underline underline-offset-5">Home</Link>
           <Link href="/procurement" className="underline underline-offset-5">Dashboard</Link>
           <Link href="/client" className="underline underline-offset-5">Client</Link>
         </nav>
