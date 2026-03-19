@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown, Braces } from "lucide-react"
+import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown, Braces, Trash2 } from "lucide-react"
 import { supabaseBrowser } from "@/lib/supabase-browser"
 import { PipelineGraphView } from "@/components/pipeline-graph-view"
 import { INITIAL_STATUSES, type NodeStatuses } from "@/lib/pipeline-graph"
@@ -81,8 +81,23 @@ function downloadJson(run: RunRow, e: React.MouseEvent) {
   URL.revokeObjectURL(url)
 }
 
-function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
+function RunCard({ run, onClick, onDelete }: { run: RunRow; onClick: () => void; onDelete: () => void }) {
   const [downloading, setDownloading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function deleteRun(e: React.MouseEvent) {
+    e.stopPropagation()
+    setDeleting(true)
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/rag_pipeline_runs?id=eq.${run.id}`, {
+        method: "DELETE",
+        headers: restHeaders(),
+      })
+      onDelete()
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   async function downloadPdf(e: React.MouseEvent) {
     e.stopPropagation()
@@ -190,6 +205,19 @@ function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
           {downloading
             ? <Loader2 className="h-4 w-4 animate-spin" />
             : <FileDown className="h-4 w-4" />}
+        </div>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={deleteRun}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void deleteRun(e as unknown as React.MouseEvent) }}
+          aria-disabled={deleting}
+          title="Delete run"
+          className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors aria-disabled:opacity-40 cursor-pointer"
+        >
+          {deleting
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <Trash2 className="h-4 w-4" />}
         </div>
         <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
@@ -359,6 +387,14 @@ export function RunsListPage({
   const [loading, setLoading]         = useState(true)
   const [selectedRun, setSelectedRun] = useState<RunRow | null>(null)
   const [loadingRun, setLoadingRun]   = useState(false)
+  const [deletedTitle, setDeletedTitle] = useState<string | null>(null)
+  const deletedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function flashDeleted(title: string) {
+    if (deletedTimerRef.current) clearTimeout(deletedTimerRef.current)
+    setDeletedTitle(title)
+    deletedTimerRef.current = setTimeout(() => setDeletedTitle(null), 2500)
+  }
 
   // Derive visible runs: in escalation mode, filter client-side by target.
   const runs = isEscalationMode
@@ -533,6 +569,13 @@ export function RunsListPage({
         </button>
       </div>
 
+      {deletedTitle && (
+        <div className="flex items-center gap-2 px-6 py-2 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs animate-in fade-in slide-in-from-top-1 duration-200">
+          <Trash2 className="h-3.5 w-3.5 shrink-0" />
+          <span><span className="font-medium">{deletedTitle}</span> was deleted.</span>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto divide-y divide-border">
         {loading ? (
           <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
@@ -549,7 +592,7 @@ export function RunsListPage({
           </div>
         ) : (
           runs.map((run) => (
-            <RunCard key={run.id} run={run} onClick={() => void selectRun(run.id)} />
+            <RunCard key={run.id} run={run} onClick={() => void selectRun(run.id)} onDelete={() => { setAllRuns((p) => p.filter((r) => r.id !== run.id)); flashDeleted(run.context_payload?.request_interpretation?.title || run.context_payload?.request_interpretation?.category_l2 || run.id) }} />
           ))
         )}
       </div>
