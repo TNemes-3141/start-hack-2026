@@ -1,5 +1,5 @@
 import { createRequestData, mergeRequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
-import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall } from "@/lib/api-calls";
+import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall } from "@/lib/api-calls";
 
 export async function core_agent(
   uploadedJson: RequestInterpretation,
@@ -25,6 +25,7 @@ export async function core_agent(
     checkAvailableProductsCall(interp).then(namedUpdate("check_available_products")),
     inappropriateRequestsCall(interp).then(namedUpdate("inappropriate_requests")),
     precedenceLookupCall(interp).then(namedUpdate("precedence_lookup")),
+    applyStaticCategoryRulesCall(interp).then(namedUpdate("apply_category_rules")),
   ]);
 
   // --- Next sequential step goes here ---

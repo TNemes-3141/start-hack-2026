@@ -53,6 +53,7 @@ export const internalCoherenceCall      = (input: unknown) => fetchApi("/api/int
 export const missingRequiredDataCall    = (input: unknown) => fetchApi("/api/missing_required_data",    input).then(r => wrapStage("missing_required_data",    r));
 export const checkAvailableProductsCall = (input: unknown) => fetchApi("/api/check_available_products", input).then(r => wrapStage("check_available_products", r));
 export const inappropriateRequestsCall  = (input: unknown) => fetchApi("/api/inappropriate_requests",   input).then(r => wrapStage("inappropriate_requests",   r));
+export const applyStaticCategoryRulesCall = (input: unknown) => fetchApi("/api/apply_static_category_rules", input).then(r => wrapStage("apply_category_rules", r));
 
 export async function precedenceLookupCall(input: unknown): Promise<RequestDataPatch> {
   const raw = await fetchApi("/api/precedence_lookup", input) as NodeResult & { historical_precedents?: HistoricalPrecedent[] };
