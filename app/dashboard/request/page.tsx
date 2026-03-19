@@ -96,7 +96,7 @@ function StatusNode({ data }: NodeProps) {
   return (
     <div
       className={`rounded-md border-2 bg-card text-card-foreground px-3 py-2 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${border}`}
-      style={{ width: 240 }}
+      style={{ width: 260 }}
     >
       <Handle type="target" position={Position.Top} className="bg-border! border-border!" />
       <div className="flex items-center justify-between gap-3">
@@ -118,7 +118,23 @@ function StatusNode({ data }: NodeProps) {
   )
 }
 
-const nodeTypes: NodeTypes = { status: StatusNode }
+function GroupBoxNode({ data }: NodeProps) {
+  const label = data.label as string | undefined
+  return (
+    <div
+      className="relative rounded-lg border-2 border-dashed border-border bg-muted/30 pointer-events-none overflow-visible"
+      style={{ width: data.width as number, height: data.height as number }}
+    >
+      {label && (
+        <span className="absolute -top-6 left-0 text-[11px] font-semibold text-foreground/60 uppercase tracking-widest select-none whitespace-nowrap">
+          {label}
+        </span>
+      )}
+    </div>
+  )
+}
+
+const nodeTypes: NodeTypes = { status: StatusNode, "group-box": GroupBoxNode }
 
 // --- Static layout ---
 
@@ -144,42 +160,74 @@ const nodeLabels: Record<NodeId, string> = {
   "done":                       "Done",
 }
 
+// ── Layout constants ───────────────────────────────────────────────────────
+const NODE_W   = 280   // StatusNode width (matches style={{ width: 280 }})
+const NODE_H   = 44    // Approximate rendered height of a StatusNode
+const BOX_PAD  = 16    // Padding on every side between box border and node edges
+
+const gbProps = { type: "group-box", selectable: false, draggable: false, focusable: false } as const
+
+// ── Status-node positions (single source of truth) ─────────────────────────
+const snPos: Record<string, { x: number; y: number }> = {
+  "request-submitted":          { x: 200, y: 0    },
+  "translation":                { x: 50,  y: 140  },
+  "internal-coherence":         { x: 360, y: 140  },
+  "missing-required-data":      { x: 360, y: 260  },
+  "check-available-products":   { x: 360, y: 380  },
+  "inappropriate-requests":     { x: 200, y: 520  },
+  "apply-cat-rules-1":          { x: 50,  y: 660  },
+  "precedence-lookup":          { x: 360, y: 660  },
+  "approval-tier":              { x: 360, y: 780  },
+  "purely-eligible-suppliers":  { x: 200, y: 920  },
+  "restricted-suppliers":       { x: 50,  y: 1060 },
+  "geographical-rules":         { x: 50,  y: 1180 },
+  "evaluate-preferred-supplier":{ x: 360, y: 1060 },
+  "apply-cat-rules-2":          { x: 200, y: 1320 },
+  "pricing-calculation":        { x: 200, y: 1460 },
+  "re-evaluate-tier":           { x: 200, y: 1580 },
+  "scoring-ranking":            { x: 200, y: 1720 },
+  "final-check":                { x: 200, y: 1860 },
+  "done":                       { x: 200, y: 2000 },
+}
+
+// ── Group definitions ───────────────────────────────────────────────────────
+const groupDefs: { id: string; label: string; members: string[] }[] = [
+  { id: "group-box-1", label: "Input Analysis",            members: ["translation","internal-coherence","missing-required-data","check-available-products"] },
+  { id: "group-box-2", label: "Inappropriate Requests",    members: ["inappropriate-requests"] },
+  { id: "group-box-3", label: "Category Rules & Approval", members: ["apply-cat-rules-1","precedence-lookup","approval-tier"] },
+  { id: "group-box-4", label: "Purely Eligible Suppliers", members: ["purely-eligible-suppliers"] },
+  { id: "group-box-5", label: "Supplier Filtering",        members: ["restricted-suppliers","geographical-rules","evaluate-preferred-supplier"] },
+  { id: "group-box-6", label: "Dynamic Category Rules",    members: ["apply-cat-rules-2"] },
+  { id: "group-box-7", label: "Pricing",                   members: ["pricing-calculation","re-evaluate-tier"] },
+  { id: "group-box-8", label: "Scoring & Ranking",         members: ["scoring-ranking"] },
+  { id: "group-box-9", label: "Final Check",               members: ["final-check"] },
+]
+
+function computeGroupBox(members: string[]) {
+  const xs = members.flatMap(id => [snPos[id].x, snPos[id].x + NODE_W])
+  const ys = members.flatMap(id => [snPos[id].y, snPos[id].y + NODE_H])
+  const x = Math.min(...xs) - BOX_PAD
+  const y = Math.min(...ys) - BOX_PAD
+  return { x, y, width: Math.max(...xs) + BOX_PAD - x, height: Math.max(...ys) + 2 * BOX_PAD + 8 - y }
+}
+
+// ── Computed group-box layout ───────────────────────────────────────────────
+const groupBoxLayout = Object.fromEntries(
+  groupDefs.map(g => [g.id, computeGroupBox(g.members)])
+)
+
+const groupBoxData: Record<string, { label: string; width: number; height: number }> = Object.fromEntries(
+  groupDefs.map(g => [g.id, { label: g.label, ...groupBoxLayout[g.id] }])
+)
+
+// ── nodeDefinitions (group boxes first within each group = render behind) ──
 const nodeDefinitions: Omit<Node, "data">[] = [
-  // ── Entry ──────────────────────────────────────────────────────────────────
-  { id: "request-submitted",         type: "status", position: { x: 200, y: 0    } },
-
-  // ── Group 1 (parallel) ─────────────────────────────────────────────────────
-  // Left branch: Translation (single node)
-  { id: "translation",               type: "status", position: { x: 50,  y: 120  } },
-  // Right branch: Internal Coherence → Missing Required Data → Check Available Products
-  { id: "internal-coherence",        type: "status", position: { x: 360, y: 120  } },
-  { id: "missing-required-data",     type: "status", position: { x: 360, y: 240  } },
-  { id: "check-available-products",  type: "status", position: { x: 360, y: 360  } },
-
-  // ── Sync / sequential ──────────────────────────────────────────────────────
-  { id: "inappropriate-requests",    type: "status", position: { x: 200, y: 500  } },
-
-  // ── Group 2 (parallel) ─────────────────────────────────────────────────────
-  // Left branch: Apply Category Rules (single node)
-  { id: "apply-cat-rules-1",         type: "status", position: { x: 50,  y: 640  } },
-  // Right branch: Precedence Lookup → Approval Tier
-  { id: "precedence-lookup",         type: "status", position: { x: 360, y: 640  } },
-  { id: "approval-tier",             type: "status", position: { x: 360, y: 760  } },
-
-  // ── Rest (sequential) ──────────────────────────────────────────────────────
-  { id: "purely-eligible-suppliers",   type: "status", position: { x: 200, y: 900  } },
-  // Branch A: restricted → geographical (sequential)
-  { id: "restricted-suppliers",        type: "status", position: { x: 50,  y: 1020 } },
-  { id: "geographical-rules",          type: "status", position: { x: 50,  y: 1140 } },
-  // Branch B: evaluate preferred supplier
-  { id: "evaluate-preferred-supplier", type: "status", position: { x: 360, y: 1020 } },
-  // Fan-in
-  { id: "apply-cat-rules-2",           type: "status", position: { x: 200, y: 1280 } },
-  { id: "pricing-calculation",         type: "status", position: { x: 200, y: 1400 } },
-  { id: "re-evaluate-tier",            type: "status", position: { x: 200, y: 1520 } },
-  { id: "scoring-ranking",             type: "status", position: { x: 200, y: 1640 } },
-  { id: "final-check",                 type: "status", position: { x: 200, y: 1760 } },
-  { id: "done",                        type: "status", position: { x: 200, y: 1880 } },
+  { id: "request-submitted", type: "status", position: snPos["request-submitted"] },
+  ...groupDefs.flatMap(g => [
+    { id: g.id, ...gbProps, position: { x: groupBoxLayout[g.id].x, y: groupBoxLayout[g.id].y } },
+    ...g.members.map(id => ({ id, type: "status", position: snPos[id] })),
+  ]),
+  { id: "done", type: "status", position: snPos["done"] },
 ]
 
 const edges: Edge[] = [
@@ -584,6 +632,10 @@ export default function RequestPage() {
 
   const nodes = useMemo<Node[]>(() =>
     nodeDefinitions.map((def) => {
+      if (def.type === "group-box") {
+        const gb = groupBoxData[def.id] ?? { label: "", width: 0, height: 0 }
+        return { ...def, data: { label: gb.label, width: gb.width, height: gb.height } }
+      }
       const id     = def.id as NodeId
       const status = nodeStatuses[id] ?? "outstanding"
       return {
