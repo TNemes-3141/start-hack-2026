@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown } from "lucide-react"
+import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown, Braces } from "lucide-react"
 import { supabaseBrowser } from "@/lib/supabase-browser"
 import { PipelineGraphView } from "@/components/pipeline-graph-view"
 import { INITIAL_STATUSES, type NodeStatuses } from "@/lib/pipeline-graph"
@@ -69,6 +69,17 @@ function isClosed(status: string) {
 }
 
 // ── Run card ──────────────────────────────────────────────────────────────────
+
+function downloadJson(run: RunRow, e: React.MouseEvent) {
+  e.stopPropagation()
+  const blob = new Blob([JSON.stringify(run.context_payload, null, 2)], { type: "application/json" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `context-payload-${run.context_payload?.request_id ?? run.id}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
   const [downloading, setDownloading] = useState(false)
@@ -157,21 +168,29 @@ function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
       </div>
 
       <div className="flex items-center gap-1 pr-3 pl-1">
-        {isClosed(run.status) && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={downloadPdf}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void downloadPdf(e as unknown as React.MouseEvent) }}
-            aria-disabled={downloading}
-            title="Download PDF report"
-            className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors aria-disabled:opacity-40 opacity-0 group-hover:opacity-100 cursor-pointer"
-          >
-            {downloading
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <FileDown className="h-4 w-4" />}
-          </div>
-        )}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => downloadJson(run, e)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") downloadJson(run, e as unknown as React.MouseEvent) }}
+          title="Download raw JSON"
+          className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+        >
+          <Braces className="h-4 w-4" />
+        </div>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={downloadPdf}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void downloadPdf(e as unknown as React.MouseEvent) }}
+          aria-disabled={downloading}
+          title="Download PDF report"
+          className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors aria-disabled:opacity-40 cursor-pointer"
+        >
+          {downloading
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <FileDown className="h-4 w-4" />}
+        </div>
         <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
     </button>
@@ -226,6 +245,13 @@ function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
         )}
       </div>
       <Badge variant={badge} className="text-[10px] shrink-0">{label}</Badge>
+      <button
+        onClick={() => downloadJson(run, { stopPropagation: () => {} } as React.MouseEvent)}
+        title="Download raw JSON"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+      >
+        <Braces className="h-4 w-4" />
+      </button>
       <button
         onClick={() => void downloadPdf()}
         disabled={downloading}
