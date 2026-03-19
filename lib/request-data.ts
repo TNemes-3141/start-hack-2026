@@ -111,6 +111,44 @@ export const FIELD_LABELS: Record<string, string> = {
   esg_requirement: "ESG Requirement",
 };
 
+// ── ApprovalTier ─────────────────────────────────────────────────────────────
+
+export type ApprovalTier = {
+  threshold_id: string;
+  tier_number: number;
+  currency: string;
+  budget_amount: number;
+  min_supplier_quotes: number;
+  approvers: string[];
+  deviation_approval_required_from: string[];
+  is_boundary_case: boolean;
+  boundary_value: number | null;
+  llm_involved: boolean;
+};
+
+// ── EligibleSupplier ──────────────────────────────────────────────────────────
+
+export type EligibleSupplier = {
+  supplier_id: string;
+  supplier_name: string | null;
+  category_l1: string;
+  category_l2: string;
+  country_hq: string | null;
+  service_regions: string | null;
+  currency: string | null;
+  pricing_model: string | null;
+  quality_score: number | null;
+  risk_score: number | null;
+  esg_score: number | null;
+  preferred_supplier: boolean | null;
+  is_restricted: boolean | null;
+  restriction_reason: string | null;
+  contract_status: string | null;
+  data_residency_supported: boolean | null;
+  capacity_per_month: number | null;
+  notes: string | null;
+};
+
 // ── Historical Precedents ─────────────────────────────────────────────────────
 
 export type HistoricalAward = {
@@ -152,6 +190,8 @@ export type RequestData = {
   processed_at: string;
   request_interpretation: RequestInterpretation;
   stages: Stages;
+  approval_tier: ApprovalTier | null;
+  eligible_suppliers: EligibleSupplier[];
   supplier_shortlist: {
     rank: number; supplier_id: string; supplier_name: string; preferred: boolean; incumbent: boolean;
     pricing_tier_applied: string; unit_price_eur: number; total_price_eur: number;
@@ -202,6 +242,8 @@ export function createRequestData(requestInterpretation: RequestInterpretation =
     processed_at: "",
     request_interpretation: requestInterpretation,
     stages: emptyStages(),
+    approval_tier: null,
+    eligible_suppliers: [],
     historical_precedents: [],
     supplier_shortlist: [],
     suppliers_excluded: [],

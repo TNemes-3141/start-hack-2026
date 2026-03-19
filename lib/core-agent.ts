@@ -1,5 +1,5 @@
 import { createRequestData, mergeRequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
-import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall } from "@/lib/api-calls";
+import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall, approvalTierCall, purelyEligibleSuppliersCall } from "@/lib/api-calls";
 
 export async function core_agent(
   uploadedJson: RequestInterpretation,
@@ -28,7 +28,9 @@ export async function core_agent(
     applyStaticCategoryRulesCall(interp).then(namedUpdate("apply_category_rules")),
   ]);
 
-  // --- Next sequential step goes here ---
+  // --- Sequential: approval tier (needs full accumulated context) ---
+  await approvalTierCall(currentData).then(namedUpdate("approval_tier"));
+  await purelyEligibleSuppliersCall(currentData.request_interpretation).then(namedUpdate("purely_eligible_suppliers"));
 
   console.log("[core_agent] final RequestData:", JSON.stringify(currentData, null, 2));
 }

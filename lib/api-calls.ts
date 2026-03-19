@@ -1,4 +1,4 @@
-import type { HistoricalPrecedent, NodeResult, RequestDataPatch, RequestInterpretation, StageId } from "./request-data";
+import type { ApprovalTier, EligibleSupplier, HistoricalPrecedent, NodeResult, RequestData, RequestDataPatch, RequestInterpretation, StageId } from "./request-data";
 
 // ── Generic fetch ─────────────────────────────────────────────────────────────
 
@@ -54,6 +54,22 @@ export const missingRequiredDataCall    = (input: unknown) => fetchApi("/api/mis
 export const checkAvailableProductsCall = (input: unknown) => fetchApi("/api/check_available_products", input).then(r => wrapStage("check_available_products", r));
 export const inappropriateRequestsCall  = (input: unknown) => fetchApi("/api/inappropriate_requests",   input).then(r => wrapStage("inappropriate_requests",   r));
 export const applyStaticCategoryRulesCall = (input: unknown) => fetchApi("/api/apply_static_category_rules", input).then(r => wrapStage("apply_category_rules", r));
+
+export async function approvalTierCall(input: RequestData): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/approval_tier", input) as NodeResult & { approval_tier?: ApprovalTier };
+  return {
+    ...(raw.approval_tier ? { approval_tier: raw.approval_tier } : {}),
+    ...wrapStage("approval_tier", raw),
+  };
+}
+
+export async function purelyEligibleSuppliersCall(input: unknown): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/purely_eligible_suppliers", input) as NodeResult & { eligible_suppliers?: EligibleSupplier[] };
+  return {
+    ...(raw.eligible_suppliers ? { eligible_suppliers: raw.eligible_suppliers } : {}),
+    ...wrapStage("purely_eligible_suppliers", raw),
+  };
+}
 
 export async function precedenceLookupCall(input: unknown): Promise<RequestDataPatch> {
   const raw = await fetchApi("/api/precedence_lookup", input) as NodeResult & { historical_precedents?: HistoricalPrecedent[] };
