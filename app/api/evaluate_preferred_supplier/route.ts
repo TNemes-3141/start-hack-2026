@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Issue, NodeResult, Reasoning, RequestData } from "@/lib/request-data";
-
-// ── Types matching the suppliers table ───────────────────────────────────────
-
-type SupplierRow = {
-  supplier_id: string;
-  supplier_name: string | null;
-  category_l1: string;
-  category_l2: string;
-  service_regions: string | null;
-  currency: string | null;
-};
+import { getSuppliersByName } from "@/lib/db";
 
 // ── POST ──────────────────────────────────────────────────────────────────────
 
@@ -66,17 +56,7 @@ export async function POST(req: NextRequest) {
   });
 
   // ── DB lookup: search by name across all categories ──────────────────────
-  const params = new URLSearchParams({ supplier_name: `ilike.*${preferred_raw}*` });
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/suppliers?${params.toString()}&select=supplier_id,supplier_name,category_l1,category_l2,service_regions,currency`,
-    {
-      headers: {
-        apikey:        process.env.NEXT_SUPABASE_SECRET_KEY!,
-        Authorization: `Bearer ${process.env.NEXT_SUPABASE_SECRET_KEY!}`,
-      },
-    }
-  );
-  const allRows: SupplierRow[] = await res.json();
+  const allRows = await getSuppliersByName(preferred_raw);
 
   // ── Step 1: Not found at all ──────────────────────────────────────────────
   if (!allRows.length) {

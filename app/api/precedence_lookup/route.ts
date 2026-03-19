@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { HistoricalAward, HistoricalPrecedent, NodeResult, Reasoning } from "@/lib/request-data";
+import { getHistoricalAwardsByContext, getHistoricalAwardsByRequestIds } from "@/lib/db";
 
 const MAX_PRECEDENTS = 5;
-
-async function supabaseFetch(path: string, params: Record<string, string>): Promise<unknown[]> {
-  const url = new URL(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/${path}`);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      apikey: process.env.NEXT_SUPABASE_SECRET_KEY!,
-      Authorization: `Bearer ${process.env.NEXT_SUPABASE_SECRET_KEY!}`,
-    },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Supabase error ${res.status}: ${text}`);
-  }
-
-  return await res.json() as unknown[];
-}
 
 /** Normalised proximity score for a single numeric dimension. Lower = closer. */
 function numericDistance(a: number, b: number): number {
@@ -52,12 +34,7 @@ export async function POST(req: NextRequest) {
   // ── 1. Exact-match query ────────────────────────────────────────────────────
   let candidates: HistoricalAward[] = [];
   try {
-    candidates = await supabaseFetch("historical_awards", {
-      category_l1: `eq.${category_l1}`,
-      category_l2: `eq.${category_l2}`,
-      currency:    `eq.${currency}`,
-      country:     `eq.${country}`,
-    }) as HistoricalAward[];
+    candidates = await getHistoricalAwardsByContext(category_l1, category_l2, currency, country);
   } catch (e) {
     console.error("[precedence_lookup] DB query failed:", e);
     reasonings.push({
@@ -116,10 +93,7 @@ export async function POST(req: NextRequest) {
   let allRows: HistoricalAward[] = [];
   if (topRequestIds.length > 0) {
     try {
-      allRows = await supabaseFetch("historical_awards", {
-        request_id: `in.(${topRequestIds.join(",")})`,
-        order: "request_id.asc,award_rank.asc",
-      }) as HistoricalAward[];
+      allRows = await getHistoricalAwardsByRequestIds(topRequestIds);
     } catch (e) {
       console.error("[precedence_lookup] second DB query failed:", e);
     }

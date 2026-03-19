@@ -1,35 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Escalation, Reasoning, NodeResult } from "@/lib/request-data";
-
-type CategoryRow = {
-  category_l1: string;
-  category_l2: string;
-  category_description: string | null;
-  typical_unit: string | null;
-  pricing_model: string | null;
-};
-
-async function queryCategory(category_l1: string, category_l2: string): Promise<CategoryRow | null> {
-  const url = new URL(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/categories`);
-  url.searchParams.set("category_l1", `eq.${category_l1}`);
-  url.searchParams.set("category_l2", `eq.${category_l2}`);
-  url.searchParams.set("limit", "1");
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      apikey: process.env.NEXT_SUPABASE_SECRET_KEY!,
-      Authorization: `Bearer ${process.env.NEXT_SUPABASE_SECRET_KEY!}`,
-    },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Supabase REST error ${res.status}: ${text}`);
-  }
-
-  const rows = await res.json() as CategoryRow[];
-  return rows.length > 0 ? rows[0] : null;
-}
+import { getCategoryByL1L2 } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as Record<string, unknown>;
@@ -43,7 +14,7 @@ export async function POST(req: NextRequest) {
   const escalations: Escalation[] = [];
   const reasonings: Reasoning[] = [];
 
-  const row = await queryCategory(category_l1, category_l2);
+  const row = await getCategoryByL1L2(category_l1, category_l2);
 
   if (!row) {
     console.log(`[check_available_products] category not found — raising ER-004`);

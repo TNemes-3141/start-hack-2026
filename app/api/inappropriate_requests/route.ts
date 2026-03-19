@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import type { Issue, Reasoning, NodeResult } from "@/lib/request-data";
+import { getPricingForCategory } from "@/lib/db";
 
 const client = new OpenAI();
 
@@ -12,48 +13,6 @@ const COUNTRY_TO_REGION: Record<string, string> = {
   SG: "APAC", AU: "APAC", IN: "APAC", JP: "APAC",
   UAE: "MEA", ZA: "MEA",
 };
-
-type PricingRow = {
-  pricing_id: string;
-  supplier_id: string | null;
-  unit_price: number | null;
-  expedited_unit_price: number | null;
-  standard_lead_time_days: number | null;
-};
-
-async function queryPricing(
-  category_l1: string,
-  category_l2: string,
-  currency: string,
-  regions: string[],
-  quantity: number,
-  today: string,
-): Promise<PricingRow[]> {
-  const url = new URL(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/pricing`);
-  url.searchParams.set("category_l1", `eq.${category_l1}`);
-  url.searchParams.set("category_l2", `eq.${category_l2}`);
-  url.searchParams.set("currency", `eq.${currency}`);
-  url.searchParams.set("region", `in.(${regions.join(",")})`);
-  url.searchParams.set("min_quantity", `lte.${quantity}`);
-  url.searchParams.set("max_quantity", `gte.${quantity}`);
-  url.searchParams.set("valid_from", `lte.${today}`);
-  url.searchParams.set("valid_to", `gte.${today}`);
-  url.searchParams.set("select", "pricing_id,supplier_id,unit_price,expedited_unit_price,standard_lead_time_days");
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      apikey: process.env.NEXT_SUPABASE_SECRET_KEY!,
-      Authorization: `Bearer ${process.env.NEXT_SUPABASE_SECRET_KEY!}`,
-    },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Supabase pricing query error ${res.status}: ${text}`);
-  }
-
-  return await res.json() as PricingRow[];
-}
 
 const LLM_FALLBACK_PROMPT = `You are a procurement validation agent. A purchase request has been submitted but there is insufficient pricing data in the database to run a statistical analysis.
 
@@ -105,11 +64,11 @@ export async function POST(req: NextRequest) {
   )];
 
   // --- Query pricing table ---
-  let pricingRows: PricingRow[] = [];
+  let pricingRows: Awaited<ReturnType<typeof getPricingForCategory>> = [];
   let dbError = false;
   try {
     if (category_l1 && category_l2 && currency && regions.length > 0 && quantity !== null) {
-      pricingRows = await queryPricing(category_l1, category_l2, currency, regions, quantity, today);
+      pricingRows = await getPricingForCategory(category_l1, category_l2, currency, regions, quantity, today);
     }
   } catch (e) {
     console.error("[inappropriate_requests] DB query failed:", e);

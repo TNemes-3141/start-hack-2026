@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { EligibleSupplier, Escalation, NodeResult, Reasoning } from "@/lib/request-data";
-
-type SupplierRow = EligibleSupplier;
+import { getSuppliersByCategoryAndCurrency } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as Record<string, unknown>;
@@ -18,24 +17,8 @@ export async function POST(req: NextRequest) {
   const escalations: Escalation[] = [];
   const reasonings: Reasoning[]   = [];
 
-  // ── 1. Fetch suppliers matching category + currency from Supabase ─────────
-  const params = new URLSearchParams({
-    category_l1: `eq.${category_l1}`,
-    category_l2: `eq.${category_l2}`,
-    currency:    `eq.${currency}`,
-  });
-
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/suppliers?${params.toString()}`,
-    {
-      headers: {
-        apikey:        process.env.NEXT_SUPABASE_SECRET_KEY!,
-        Authorization: `Bearer ${process.env.NEXT_SUPABASE_SECRET_KEY!}`,
-      },
-    }
-  );
-
-  const rows: SupplierRow[] = await res.json();
+  // ── 1. Fetch suppliers matching category + currency ────────────────────────
+  const rows: EligibleSupplier[] = await getSuppliersByCategoryAndCurrency(category_l1, category_l2, currency);
 
   reasonings.push({
     step_id:   "R-ES-001",

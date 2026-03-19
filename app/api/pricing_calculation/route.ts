@@ -1,29 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Escalation, Issue, NodeResult, PolicyEvaluation, Reasoning, RequestData, ShortlistEntry } from "@/lib/request-data";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type PricingRow = {
-  pricing_id: string;
-  supplier_id: string;
-  category_l1: string;
-  category_l2: string;
-  region: string;
-  currency: string;
-  pricing_model: string | null;
-  min_quantity: number | null;
-  max_quantity: number | null;
-  unit_price: number | null;
-  moq: number | null;
-  standard_lead_time_days: number | null;
-  expedited_lead_time_days: number | null;
-  expedited_unit_price: number | null;
-  valid_from: string | null;
-  valid_to: string | null;
-  notes: string | null;
-};
-
-// ShortlistEntry is imported from request-data
+import { getPricingForSuppliers, type PricingRow } from "@/lib/db";
 
 // ── Region mapping ────────────────────────────────────────────────────────────
 
@@ -103,23 +80,13 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Batch pricing fetch for all eligible suppliers ────────────────────────
-  const supplierIdsIn = eligible.map((s) => s.supplier_id).join(",");
-  const url =
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/pricing` +
-    `?supplier_id=in.(${supplierIdsIn})` +
-    `&category_l1=eq.${encodeURIComponent(category_l1)}` +
-    `&category_l2=eq.${encodeURIComponent(category_l2)}` +
-    `&currency=eq.${encodeURIComponent(currency)}` +
-    `&region=eq.${encodeURIComponent(region)}` +
-    `&select=*`;
-
-  const res = await fetch(url, {
-    headers: {
-      apikey:        process.env.NEXT_SUPABASE_SECRET_KEY!,
-      Authorization: `Bearer ${process.env.NEXT_SUPABASE_SECRET_KEY!}`,
-    },
-  });
-  const allRows: PricingRow[] = await res.json();
+  const allRows: PricingRow[] = await getPricingForSuppliers(
+    eligible.map((s) => s.supplier_id),
+    category_l1,
+    category_l2,
+    currency,
+    region,
+  );
 
   // Group rows by supplier
   const bySupplier = new Map<string, PricingRow[]>();
