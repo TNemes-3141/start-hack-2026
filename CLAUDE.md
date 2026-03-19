@@ -209,6 +209,13 @@ Key fields:
 
 > **Note on `is_restricted`:** The flag indicates a general restriction. Country-scoped and value-conditional restrictions (e.g. a supplier restricted only in specific countries, or only above a given contract value) are defined in `policies.json` and take precedence. Always check both.
 
+Example:
+```
+supplier_id,supplier_name,category_l1,category_l2,country_hq,service_regions,currency,pricing_model,quality_score,risk_score,esg_score,preferred_supplier,is_restricted,restriction_reason,contract_status,data_residency_supported,capacity_per_month,notes
+SUP-0001,Dell Enterprise Europe,IT,Laptops,DE,DE;FR;NL;BE;AT;CH;IT;ES;PL,EUR,tiered,87,16,73,True,False,,active,False,18000,
+SUP-0001,Dell Enterprise Europe,IT,Mobile Workstations,DE,DE;FR;NL;BE;AT;CH;IT;ES;PL,EUR,tiered,85,15,75,True,False,,active,True,18000,
+```
+
 ---
 
 ### pricing.csv
@@ -235,6 +242,13 @@ Key fields:
 
 Determine the correct pricing tier by matching `quantity` against `min_quantity`/`max_quantity`. For hardware suppliers, four tiers exist: 1–99, 100–499, 500–1999, 2000+.
 
+Example:
+```
+pricing_id,supplier_id,category_l1,category_l2,region,currency,pricing_model,min_quantity,max_quantity,unit_price,moq,standard_lead_time_days,expedited_lead_time_days,expedited_unit_price,valid_from,valid_to,notes
+PR-00001,SUP-0001,IT,Laptops,EU,EUR,tiered,1,99,980.0,1,27,22,1058.4,2026-01-01,2026-12-31,
+PR-00002,SUP-0001,IT,Laptops,EU,EUR,tiered,100,499,930.0,100,25,17,1004.4,2026-01-01,2026-12-31,
+```
+
 ---
 
 ### categories.csv
@@ -247,6 +261,13 @@ Category reference data. 30 rows covering all L1/L2 category combinations.
 | `category_description` | Plain-language description of what this category covers |
 | `typical_unit` | Standard unit of measure |
 | `pricing_model` | Expected pricing model for this category |
+
+Example:
+```
+category_l1,category_l2,category_description,typical_unit,pricing_model
+IT,Laptops,Standard employee laptops,device,tiered
+IT,Mobile Workstations,High-performance portable workstations,device,tiered
+```
 
 ---
 
@@ -322,6 +343,13 @@ Key fields:
 | `lead_time_days` | Lead time quoted by this supplier |
 
 Historical data should be used as **contextual precedent** only. It illustrates typical decision patterns but does not represent ground truth for evaluation.
+
+Example:
+```
+award_id,request_id,award_date,category_l1,category_l2,country,business_unit,supplier_id,supplier_name,total_value,currency,quantity,required_by_date,awarded,award_rank,decision_rationale,policy_compliant,preferred_supplier_used,escalation_required,escalated_to,savings_pct,lead_time_days,risk_score_at_award,notes
+AWD-000001,REQ-000001,2026-04-21,Professional Services,IT Project Management Services,ES,Digital Workplace,SUP-0030,Accenture Advisory Europe,448000.0,EUR,400.0,2026-05-17,True,1,Strong incumbent performance and acceptable commercial terms,True,True,False,,7.5,13,25,
+AWD-000002,REQ-000001,2026-04-22,Professional Services,IT Project Management Services,ES,Digital Workplace,SUP-0031,Capgemini Consulting,412000.0,EUR,400.0,2026-05-17,False,2,Best compliant combination of price and lead time,True,True,False,Head of Strategic Sourcing,0.0,14,22,
+```
 
 ---
 
