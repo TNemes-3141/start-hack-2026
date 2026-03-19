@@ -158,16 +158,19 @@ function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
 
       <div className="flex items-center gap-1 pr-3 pl-1">
         {isClosed(run.status) && (
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={downloadPdf}
-            disabled={downloading}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void downloadPdf(e as unknown as React.MouseEvent) }}
+            aria-disabled={downloading}
             title="Download PDF report"
-            className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
+            className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors aria-disabled:opacity-40 opacity-0 group-hover:opacity-100 cursor-pointer"
           >
             {downloading
               ? <Loader2 className="h-4 w-4 animate-spin" />
               : <FileDown className="h-4 w-4" />}
-          </button>
+          </div>
         )}
         <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
@@ -178,11 +181,32 @@ function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
 // ── Graph header ──────────────────────────────────────────────────────────────
 
 function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
+  const [downloading, setDownloading] = useState(false)
   const interp = run.context_payload?.request_interpretation
   const title  = interp?.title || interp?.category_l2 || "Untitled Request"
   const catL1  = interp?.category_l1
   const catL2  = interp?.category_l2
   const { label, dot, badge } = getStatusMeta(run.status)
+
+  async function downloadPdf() {
+    setDownloading(true)
+    try {
+      const res = await fetch("/api/generate_text_summary_for_client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(run.context_payload),
+      })
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `procurement-report-${run.context_payload?.request_id ?? run.id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/80 backdrop-blur shrink-0">
@@ -202,6 +226,14 @@ function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
         )}
       </div>
       <Badge variant={badge} className="text-[10px] shrink-0">{label}</Badge>
+      <button
+        onClick={() => void downloadPdf()}
+        disabled={downloading}
+        title="Download PDF report"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
+      >
+        {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+      </button>
     </div>
   )
 }
