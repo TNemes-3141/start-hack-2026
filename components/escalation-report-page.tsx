@@ -28,7 +28,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser"
 import { createRequestData, type RequestData, type ShortlistEntry } from "@/lib/request-data"
 import { Badge } from "@/components/ui/badge"
 import { useRequestStore } from "@/lib/request-store"
-import { INITIAL_STATUSES, type NodeStatuses } from "@/lib/pipeline-graph"
+import type { NodeStatuses } from "@/lib/pipeline-graph"
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -206,7 +206,7 @@ function EscalationReportCard({
   roleLabel: string
   onAbort: (runId: string) => void
 }) {
-  const { resolveEscalations } = useRequestStore()
+  const { approveAndResume } = useRequestStore()
   const [resolving, setResolving] = useState(false)
   const [aborting, setAborting]   = useState(false)
 
@@ -228,7 +228,7 @@ function EscalationReportCard({
   async function handleResolve() {
     setResolving(true)
     try {
-      await resolveEscalations(run.id, data, run.node_statuses ?? INITIAL_STATUSES, roleLabel, targets)
+      await approveAndResume(run.id, data, roleLabel)
     } finally {
       setResolving(false)
     }
