@@ -126,7 +126,7 @@ const NODE_W  = 280  // StatusNode width (matches style={{ width: NODE_W }})
 const NODE_H  = 44   // Approximate rendered height of a StatusNode
 const BOX_PAD = 16   // Padding on every side between box border and node edges
 
-const gbProps = { type: "group-box", selectable: false, draggable: false, focusable: false } as const
+const gbProps = { type: "group-box", selectable: false, draggable: false, focusable: false, className: "pointer-events-none" } as const
 
 // ── Status-node positions (single source of truth) ────────────────────────────
 
@@ -550,6 +550,7 @@ export function PipelineGraphView({
   )
 
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
+    if (node.type === "group-box") return
     setSelectedNodeId(node.id as NodeId)
   }, [])
 

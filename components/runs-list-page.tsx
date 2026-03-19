@@ -171,6 +171,49 @@ function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
   )
 }
 
+// ── Escalation info card ──────────────────────────────────────────────────────
+
+function EscalationInfoCard({ requestData }: { requestData: RequestData }) {
+  const escalations = Object.values(requestData.stages).flatMap((s) => s.escalations ?? [])
+  if (escalations.length === 0) return null
+
+  const blocking    = escalations.filter((e) => e.blocking)
+  const advisory    = escalations.filter((e) => !e.blocking)
+
+  return (
+    <div className="w-full border-b border-border bg-destructive/5 px-6 py-3 shrink-0">
+      <div className="flex items-center gap-2 mb-2">
+        <ShieldAlert className="h-4 w-4 text-destructive shrink-0" />
+        <span className="text-sm font-semibold text-destructive">
+          {blocking.length > 0
+            ? `${blocking.length} blocking escalation${blocking.length > 1 ? "s" : ""}`
+            : `${advisory.length} advisory escalation${advisory.length > 1 ? "s" : ""}`}
+        </span>
+        {blocking.length > 0 && advisory.length > 0 && (
+          <span className="text-xs text-muted-foreground">+ {advisory.length} advisory</span>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {escalations.map((e) => (
+          <div
+            key={e.escalation_id}
+            className="flex items-start gap-3 rounded-md border bg-background px-3 py-2"
+          >
+            <span className={`mt-px inline-flex h-2 w-2 shrink-0 rounded-full ${e.blocking ? "bg-destructive" : "bg-amber-500"}`} />
+            <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
+              <span className="font-mono text-[11px] font-semibold text-muted-foreground shrink-0">{e.rule}</span>
+              <span className="text-xs text-foreground leading-snug">{e.trigger}</span>
+            </div>
+            <span className="text-[11px] text-muted-foreground shrink-0 whitespace-nowrap">
+              → <span className="font-medium text-foreground">{e.escalate_to}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 // ── Escalation filter helpers ─────────────────────────────────────────────────
@@ -359,7 +402,8 @@ export function RunsListPage({
     return (
       <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6">
         <GraphHeader run={selectedRun} onBack={() => setSelectedRun(null)} />
-        <div className="flex-1 p-6 min-h-0">
+        <EscalationInfoCard requestData={selectedRun.context_payload ?? createRequestData()} />
+        <div className="flex-1 p-6 min-h-0 h-full">
           <PipelineGraphView
             nodeStatuses={selectedRun.node_statuses ?? INITIAL_STATUSES}
             requestData={selectedRun.context_payload ?? createRequestData()}
