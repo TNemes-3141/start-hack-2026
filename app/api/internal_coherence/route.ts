@@ -6,6 +6,8 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const PROMPT = `You are a strict internal coherence checker in a procurement pipeline.
 
 Your ONLY job is to check whether specific structured fields contradict the free-text "request_text". You must NOT evaluate policy, feasibility, budget reasonableness, supplier suitability, or anything outside the scope below.
+There are fields that are not part of your check: unit of measure
+
 
 ---
 
@@ -62,7 +64,7 @@ export async function POST(req: NextRequest) {
   const completion = await client.responses.create({
     model: "gpt-5-mini",
     reasoning: { effort: "low" },
-    input: `${PROMPT}\n\nToday's date is ${today}. Use this to resolve relative date expressions in request_text (e.g. "end of next week", "in two weeks", "by Friday") to a concrete date before comparing against required_by_date.\n\nProcurement request:\n${JSON.stringify(body)}`,
+    input: `${PROMPT}\n\nToday's date is ${today}. Use this to resolve relative date expressions in request_text (e.g. "end of next week", "in two weeks", "by Friday") to a concrete date before comparing against required_by_date. In this specific case be generous regarding e.g. end of the week, both friday and sunday may count as end of a week.\n\nProcurement request:\n${JSON.stringify(body)}`,
   });
 
   const raw = JSON.parse(completion.output_text ?? "{}");
