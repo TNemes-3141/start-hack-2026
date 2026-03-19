@@ -1,54 +1,65 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Escalation, Reasoning, NodeResult } from "@/lib/request-data";
 
-function collectMissingFields(obj: Record<string, unknown>, prefix = ""): string[] {
-  const missing: string[] = [];
-  for (const [key, val] of Object.entries(obj)) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (val === null || val === undefined || val === "") {
-      missing.push(path);
-    } else if (typeof val === "object" && !Array.isArray(val)) {
-      missing.push(...collectMissingFields(val as Record<string, unknown>, path));
-    }
-  }
-  return missing;
-}
+const REQUIRED_FIELDS = [
+  "business_unit",
+  "country",
+  "category_l1",
+  "category_l2",
+  "request_text",
+  "quantity",
+  "unit_of_measure",
+  "currency",
+  "budget_amount",
+  "required_by_date",
+] as const;
 
 export async function POST(req: NextRequest) {
-  const body: unknown = await req.json();
+  const body = await req.json() as Record<string, unknown>;
 
-  const interpretation = body as Record<string, unknown> | null;
+  const missing: string[] = [];
 
-  if (!interpretation || typeof interpretation !== "object" || Array.isArray(interpretation)) {
-    console.log("[missing_required_data] no valid interpretation object received");
-    return NextResponse.json({ escalations: [], reasonings: [], issues: [], policy_violations: [] });
+  for (const field of REQUIRED_FIELDS) {
+    const val = body[field];
+    if (val === null || val === undefined || val === "") {
+      missing.push(field);
+    }
   }
 
-  const missing = collectMissingFields(interpretation);
-
-  if (missing.length === 0) {
-    console.log("[missing_required_data] all fields populated — no issues");
-  } else {
-    console.log(`[missing_required_data] ${missing.length} missing field(s):`, missing);
+  const deliveryCountries = body["delivery_countries"];
+  if (!Array.isArray(deliveryCountries) || deliveryCountries.length === 0) {
+    missing.push("delivery_countries");
   }
 
-  const escalations = missing.map((field, i) => ({
-    escalation_id: `ESC-MRD-${String(i + 1).padStart(3, "0")}`,
-    rule: "ER-002",
-    trigger: `Required field "${field}" is null or empty`,
-    escalate_to: "Requester",
-    blocking: true,
-  }));
+  const escalations: Escalation[] = missing.length > 0
+    ? [
+        {
+          escalation_id: "ESC-MRD-001",
+          rule: "ER-001",
+          trigger: `Missing or empty required field(s): ${missing.join(", ")}`,
+          escalate_to: "Requester",
+          blocking: true,
+        },
+      ]
+    : [];
 
-  const reasonings = [
+  const reasonings: Reasoning[] = [
     {
       step_id: "R-MRD-001",
-      aspect: "Missing Required Data",
+      aspect: "Required Field Completeness",
       reasoning:
         missing.length === 0
-          ? "All fields in request_interpretation are populated."
-          : `Found ${missing.length} missing or empty field(s): ${missing.join(", ")}.`,
+          ? "All required fields are present and non-empty. Processing can continue."
+          : `Pipeline terminated: ${missing.length} required field(s) are missing or empty (${missing.join(", ")}). Manual completion by the Requester is needed before this request can be evaluated.`,
     },
   ];
 
-  return NextResponse.json({ escalations, reasonings, issues: [], policy_violations: [] });
+  console.log(
+    missing.length === 0
+      ? "[missing_required_data] all required fields populated"
+      : `[missing_required_data] ${missing.length} missing field(s): ${missing.join(", ")}`
+  );
+
+  const result: NodeResult = { escalations, reasonings, issues: [], policy_violations: [] };
+  return NextResponse.json(result);
 }

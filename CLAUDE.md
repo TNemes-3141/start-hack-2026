@@ -14,7 +14,7 @@ Hackathon project for START Hack 2026. AI-powered, data-driven web app with rich
 | Components | shadcn/ui (radix-nova style, neutral base) |
 | Icons | Lucide React |
 | Charts | Recharts |
-| Database | PostgreSQL via Supabase (`postgres` driver) |
+| Database | PostgreSQL via Supabase (REST API over HTTPS) |
 | AI | OpenAI API (`openai` SDK) |
 
 ## Project Structure
@@ -64,13 +64,32 @@ public/        # Static assets
 - Use Recharts for all data visualization.
 - The theme exposes 5 chart color tokens: `--chart-1` through `--chart-5`. Use these for consistent palette.
 
+### Database Access
+
+- **Never use the `postgres` driver** for direct TCP connections — `db.[id].supabase.co` is unreachable from this environment (IPv6 / DNS failure).
+- **Always use the Supabase REST API** via `fetch` to `${NEXT_PUBLIC_SUPABASE_URL}/rest/v1/<table>`.
+- Authenticate with both headers: `apikey: <key>` and `Authorization: Bearer <key>`, using `NEXT_SUPABASE_SECRET_KEY` for server-side routes.
+- Filter params use PostgREST syntax: `?column=eq.value&limit=1`.
+
+Example:
+```ts
+const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/my_table?col=eq.${val}&limit=1`, {
+  headers: {
+    apikey: process.env.NEXT_SUPABASE_SECRET_KEY!,
+    Authorization: `Bearer ${process.env.NEXT_SUPABASE_SECRET_KEY!}`,
+  },
+});
+const rows = await res.json();
+```
+
 ## Environment Variables
 
 Required in `.env.local`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-POSTGRES_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=
+NEXT_SUPABASE_SECRET_KEY=
+SUPABASE_CONNECTION_STRING=   # not used — direct TCP fails; kept for reference only
 OPENAI_API_KEY=
 ```
 

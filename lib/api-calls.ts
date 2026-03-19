@@ -2,13 +2,24 @@ import type { NodeResult, RequestDataPatch, RequestInterpretation, StageId } fro
 
 // ── Generic fetch ─────────────────────────────────────────────────────────────
 
+const EMPTY_NODE_RESULT: NodeResult = { issues: [], escalations: [], reasonings: [], policy_violations: [] };
+
 async function fetchApi(endpoint: string, input: unknown): Promise<NodeResult> {
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  return res.json();
+  if (!res.ok) {
+    console.error(`[fetchApi] ${endpoint} returned ${res.status}`);
+    return EMPTY_NODE_RESULT;
+  }
+  try {
+    return await res.json();
+  } catch {
+    console.error(`[fetchApi] ${endpoint} returned non-JSON body`);
+    return EMPTY_NODE_RESULT;
+  }
 }
 
 /** Wraps a raw NodeResult response into a RequestDataPatch targeting a specific stage slot. */

@@ -1,47 +1,101 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Escalation, Reasoning, NodeResult } from "@/lib/request-data";
 
-// TODO: replace stub with real Supabase query once DB schema is confirmed
-// e.g. import postgres from "postgres";
-// const sql = postgres(process.env.POSTGRES_URL!);
+type CategoryRow = {
+  category_l1: string;
+  category_l2: string;
+  category_description: string | null;
+  typical_unit: string | null;
+  pricing_model: string | null;
+};
 
-async function isProductAvailable(_category: string, _interpretation: unknown): Promise<boolean> {
-  // TODO: query Supabase for matching products by category / SKU / description
-  // e.g. const rows = await sql`SELECT id FROM products WHERE category = ${category} LIMIT 1`;
-  // return rows.length > 0;
-  return true; // stub: assume available until DB is wired up
+async function queryCategory(category_l1: string, category_l2: string): Promise<CategoryRow | null> {
+  const url = new URL(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/categories`);
+  url.searchParams.set("category_l1", `eq.${category_l1}`);
+  url.searchParams.set("category_l2", `eq.${category_l2}`);
+  url.searchParams.set("limit", "1");
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      apikey: process.env.NEXT_SUPABASE_SECRET_KEY!,
+      Authorization: `Bearer ${process.env.NEXT_SUPABASE_SECRET_KEY!}`,
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase REST error ${res.status}: ${text}`);
+  }
+
+  const rows = await res.json() as CategoryRow[];
+  return rows.length > 0 ? rows[0] : null;
 }
 
 export async function POST(req: NextRequest) {
-  const body: unknown = await req.json();
+  const body = await req.json() as Record<string, unknown>;
 
-  const interpretation = body as Record<string, unknown> | undefined;
-  const category = (interpretation?.category_l2 ?? interpretation?.category_l1 ?? "") as string;
+  const category_l1 = (body["category_l1"] ?? "") as string;
+  const category_l2 = (body["category_l2"] ?? "") as string;
+  const unit_of_measure = (body["unit_of_measure"] ?? "") as string;
 
-  console.log(`[check_available_products] checking category: "${category}"`);
-  const available = await isProductAvailable(category, interpretation);
-  console.log(`[check_available_products] available: ${available}`);
+  console.log(`[check_available_products] looking up (${category_l1}, ${category_l2})`);
 
-  const escalations = available
-    ? []
-    : [
-        {
-          escalation_id: "ESC-CAP-001",
-          rule: "ER-004",
-          trigger: `No available product found for category "${category}"`,
-          escalate_to: "Head of Category",
-          blocking: true,
-        },
-      ];
+  const escalations: Escalation[] = [];
+  const reasonings: Reasoning[] = [];
 
-  const reasonings = [
-    {
+  const row = await queryCategory(category_l1, category_l2);
+
+  if (!row) {
+    console.log(`[check_available_products] category not found — raising ER-004`);
+    reasonings.push({
       step_id: "R-CAP-001",
-      aspect: "Product Availability",
-      reasoning: available
-        ? `Product found for category "${category}".`
-        : `No matching product in the catalog for category "${category}". ER-004 escalation raised.`,
-    },
-  ];
+      aspect: "Category Lookup",
+      reasoning: `No entry found in the categories table for (category_l1="${category_l1}", category_l2="${category_l2}"). No supplier could be identified that matches the requested product.`,
+    });
+    escalations.push({
+      escalation_id: "ESC-CAP-001",
+      rule: "ER-004",
+      trigger: `Category (${category_l1} / ${category_l2}) not found in the product catalog`,
+      escalate_to: "Head of Category",
+      blocking: true,
+    });
+  } else {
+    console.log(`[check_available_products] category found, typical_unit="${row.typical_unit}"`);
+    reasonings.push({
+      step_id: "R-CAP-001",
+      aspect: "Category Lookup",
+      reasoning: `Category (category_l1="${category_l1}", category_l2="${category_l2}") exists in the catalog. Description: ${row.category_description ?? "n/a"}.`,
+    });
 
-  return NextResponse.json({ escalations, reasonings, issues: [], policy_violations: [] });
+    const typicalUnit = (row.typical_unit ?? "").trim().toLowerCase();
+    const requestedUnit = unit_of_measure.trim().toLowerCase();
+
+    if (typicalUnit && requestedUnit && typicalUnit !== requestedUnit) {
+      console.log(`[check_available_products] unit mismatch: requested="${requestedUnit}", typical="${typicalUnit}" — raising ER-001`);
+      reasonings.push({
+        step_id: "R-CAP-002",
+        aspect: "Unit of Measure Consistency",
+        reasoning: `The requested unit_of_measure "${unit_of_measure}" does not match the typical unit "${row.typical_unit}" for this category. This is inconsistent with how this product is supplied.`,
+      });
+      escalations.push({
+        escalation_id: "ESC-CAP-002",
+        rule: "ER-001",
+        trigger: `unit_of_measure "${unit_of_measure}" is inconsistent with typical unit "${row.typical_unit}" for category (${category_l1} / ${category_l2})`,
+        escalate_to: "Requester",
+        blocking: true,
+      });
+    } else {
+      reasonings.push({
+        step_id: "R-CAP-002",
+        aspect: "Unit of Measure Consistency",
+        reasoning:
+          typicalUnit && requestedUnit
+            ? `Requested unit "${unit_of_measure}" matches the typical unit "${row.typical_unit}" for this category.`
+            : `Unit of measure check skipped: one or both values are absent (requested="${unit_of_measure}", typical="${row.typical_unit ?? ""}").`,
+      });
+    }
+  }
+
+  const result: NodeResult = { escalations, reasonings, issues: [], policy_violations: [] };
+  return NextResponse.json(result);
 }
