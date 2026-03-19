@@ -4,46 +4,55 @@ import puppeteer from "puppeteer";
 
 const client = new OpenAI();
 
-const PROMPT = `Act as a Senior Procurement Consultant. Your task is to transform a raw RAG Pipeline JSON report into a high-end, professional "Procurement Analysis Report" for a corporate client.
+const PROMPT = `Act as a Senior Procurement Analyst. Transform the provided 'RequestData' JSON into a high-end, board-ready "Procurement Intelligence Report."
 
-### OUTPUT FORMAT
-Return ONLY valid HTML5 code. Use Tailwind CSS via CDN for styling. The design should be minimalist, executive, and high-contrast (corporate aesthetic).
-
-### DATA SOURCE
+### DATA INPUT
 {{RequestData}}
 
-### DOCUMENT SECTIONS TO GENERATE:
+### STYLE & DESIGN GUIDELINES (Strict Compliance)
+1. **No Icons/Emojis:** Use bold text, borders, and background shading to denote status. 
+2. **Typography:** Use a clean Sans-Serif stack (Inter/Helvetica). Headers must be All-Caps with increased letter spacing.
+3. **Color Palette:** - Primary: Deep Navy (#0F172A) for headers.
+   - Accent: Slate Gray (#64748B) for sub-headers.
+   - Status: Use "Soft Red" (#FEE2E2) backgrounds for Blocked/Escalated items and "Soft Blue" (#DBEAFE) for Informational items.
+4. **Layout:** - 12pt base font size. 
+   - Use 1px Solid Borders for tables and section dividers. 
+   - No rounded corners; use sharp, professional edges.
+5. **Print Optimization:** Include CSS 'page-break-inside: avoid;' for sections to ensure the PDF doesn't cut text awkwardly.
 
-1. **Executive Summary Header:**
-   - Display the Request Title, ID, and Date.
-   - Status Badge: Use a clear visual indicator for the "recommendation.status" (e.g., Red for Blocked/Escalated, Green for Approved).
-   - Summary Statement: A 2-sentence non-technical explanation of the "recommendation.reason".
+### DOCUMENT STRUCTURE
 
-2. **Request Interpretation (The "What"):**
-   - A clean 2-column grid showing the Category, Budget ($50,000 CHF), Quantity, and Delivery Country.
+**1. COVER HEADER**
+- Title: "PROCUREMENT AUTHENTICATION & STRATEGY REPORT"
+- Metadata: Display Request ID, Date, and Requester Role in a clean horizontal bar.
+- Final Status: A large, boxed status (e.g., "STATUS: ESCALATED") using a high-contrast background.
 
-3. **Supplier Intelligence & Shortlist:**
-   - **Preferred Supplier Analysis:** Highlight the "preferred_supplier_mentioned" (Beliani). Explain clearly that they were not found in the database (from evaluate_preferred_supplier stage).
-   - **Shortlist Table:** List the "eligible_suppliers". If empty (as in this JSON), provide a "Market Gap Warning" explaining that no suppliers currently meet the criteria for [Category] in [Country].
+**2. EXECUTIVE INTERPRETATION**
+- Present the "Request Interpretation" block. 
+- Map JSON values to professional labels: 
+  - 'budget_amount' -> "Allocated Capital"
+  - 'category_l2' -> "Procurement Category"
+  - 'delivery_countries' -> "Logistics Destination"
 
-4. **Policy & Compliance (The "Why"):**
-   - **Approval Tier:** Explicitly state that this is Tier 2, requiring 2 quotes and specific approvers (Business & Procurement).
-   - **Audit Trail:** List the policies checked (Geography, Restricted Suppliers, etc.) to build trust.
-   - **Internal Coherence:** Note any missing data from the original request (e.g., missing currency or specific category labels) as "System Clarifications."
+**3. CRITICAL FINDINGS: PREFERRED SUPPLIER**
+- Detail the analysis of "Beliani". 
+- State clearly that the supplier is "Unregistered" or "Database Mismatch." 
+- Reference the specific reasoning from 'evaluate_preferred_supplier' (e.g., "Manual DB lookup returned no matches for the specified entity").
 
-5. **Actionable Next Steps:**
-   - Translate the "escalations" into a "How to resolve" section.
-   - Example: "This request has been escalated to the Head of Category because no local suppliers were found. Action required: Expand search to EU or manually onboard Beliani."
+**4. COMPLIANCE & GOVERNANCE (Audit Trail)**
+- **Approval Tiering:** Detail the requirements for Tier 2 (budget > 50k CHF). List specific required signatories (Business/Procurement).
+- **Policy Verification:** Create a list of all "policies_checked" from the audit trail. Label each as "VERIFIED" or "EXCEPTION TRIGGERED".
+- **Internal Coherence:** List the "reasonings" from the 'internal_coherence' stage. Focus on what was validated (e.g., Budget/Quantity) vs what was missing (e.g., Timeline).
 
-### DESIGN CONSTRAINTS:
-- Use 'font-sans'.
-- Use Soft Grays for backgrounds ('bg-gray-50') and Primary Navy for headers.
-- Use Icons (SVG or Emoji) for status checks (✅, ⚠️, ❌).
-- Ensure the PDF has clear page breaks (CSS: 'page-break-after: always').
-- **NO JSON SYNTAX:** The client should never see keys like "category_l1" or "step_id". Use "Primary Category" and "Verification Step".
+**5. MARKET GAP & ESCALATION**
+- Explain the 'purely_eligible_suppliers' failure: "Zero suppliers found matching Category + Currency + Geography."
+- List the 'escalations' as "Mandatory Remediation Steps." 
+- Example: "ESCALATION ID ESC-ES-001: Requires Head of Category intervention due to regional supply gap."
 
-### TONE:
-Professional, transparent, and authoritative.`;
+### OUTPUT REQUIREMENTS
+- Return ONLY HTML/CSS.
+- Do not explain the code. 
+- Ensure the HTML is self-contained (Tailwind CSS via CDN is permitted).`;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
