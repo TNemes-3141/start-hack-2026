@@ -78,10 +78,20 @@ const statusConfig: Record<PipelineNodeStatus, { icon: React.ReactNode; border: 
   done:        { icon: <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />, border: "border-emerald-600/60 dark:border-emerald-400/60" },
 }
 
+function formatDuration(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`
+}
+
 function StatusNode({ data }: NodeProps) {
-  const status    = (data.status    as PipelineNodeStatus) ?? "outstanding"
-  const startedAt = data.startedAt  as number | undefined
+  const status            = (data.status            as PipelineNodeStatus) ?? "outstanding"
+  const startedAt         = data.startedAt          as number | undefined
+  const completedDuration = data.completedDuration  as number | undefined
   const { icon, border } = statusConfig[status]
+
+  const isTerminal = status === "done" || status === "escalation" || status === "warning"
 
   return (
     <div
@@ -96,6 +106,11 @@ function StatusNode({ data }: NodeProps) {
       {status === "working" && startedAt !== undefined && (
         <div className="mt-1">
           <ElapsedTimer startedAt={startedAt} />
+        </div>
+      )}
+      {isTerminal && completedDuration !== undefined && (
+        <div className="mt-1">
+          <span className="text-xs tabular-nums text-muted-foreground">{formatDuration(completedDuration)}</span>
         </div>
       )}
       <Handle type="source" position={Position.Bottom} className="bg-border! border-border!" />
@@ -509,8 +524,8 @@ function NodeDetailPanel({
               <div>
                 <SectionHeader icon={<Info className="h-4 w-4 text-muted-foreground" />} title="Reasonings" />
                 <div className="flex flex-col gap-2">
-                  {reasonings.map((r) => (
-                    <div key={r.step_id} className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-xs">
+                  {reasonings.map((r, i) => (
+                    <div key={`${r.step_id}-${i}`} className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-xs">
                       <span className="font-medium text-foreground">{r.aspect}</span>
                       <p className="text-muted-foreground mt-1">{r.reasoning}</p>
                     </div>
@@ -550,15 +565,21 @@ export default function RequestPage() {
 
   // Track when each node first entered "working" state for the elapsed timer
   const workingStartTimes = useRef<Partial<Record<string, number>>>({})
+  const [completedDurations, setCompletedDurations] = useState<Partial<Record<string, number>>>({})
   useEffect(() => {
     const now = Date.now()
+    const newDurations: Partial<Record<string, number>> = {}
+    let changed = false
     for (const [id, status] of Object.entries(nodeStatuses)) {
       if (status === "working" && workingStartTimes.current[id] === undefined) {
         workingStartTimes.current[id] = now
-      } else if (status !== "working") {
+      } else if (status !== "working" && workingStartTimes.current[id] !== undefined) {
+        newDurations[id] = now - workingStartTimes.current[id]!
         delete workingStartTimes.current[id]
+        changed = true
       }
     }
+    if (changed) setCompletedDurations(prev => ({ ...prev, ...newDurations }))
   }, [nodeStatuses])
 
   const nodes = useMemo<Node[]>(() =>
@@ -571,10 +592,11 @@ export default function RequestPage() {
           label:    nodeLabels[id],
           status,
           startedAt: status === "working" ? (workingStartTimes.current[id] ?? Date.now()) : undefined,
+          completedDuration: status !== "working" && status !== "outstanding" ? completedDurations[id] : undefined,
         },
       }
     }),
-    [nodeStatuses, workingStartTimes]
+    [nodeStatuses, completedDurations]
   )
 
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
