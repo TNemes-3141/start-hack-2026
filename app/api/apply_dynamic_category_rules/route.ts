@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { EligibleSupplier, Escalation, Issue, NodeResult, PolicyEvaluation, Reasoning, RequestData } from "@/lib/request-data";
+import type { EligibleSupplier, Escalation, Issue, NodeResult, PolicyEvaluation, Reasoning, RequestData, RequestInterpretation } from "@/lib/request-data";
 
 // ── POST ──────────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
   let step = 1;
   let esc  = 1;
   let iss  = 1;
+  let fast_track_eligible = false;
 
   // ── CR-001: IT / Laptops — mandatory supplier comparison above 100K ───────
   // Rule: "At least three compliant supplier options must be compared above EUR/CHF 100000"
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
     const threshold = 75_000;
 
     if (covered && budget_amount < threshold) {
+      fast_track_eligible = true;
       policy_violations.push({
         policy: "CR-003",
         description: `CR-003 applies: IT/Break-Fix Pool Devices budget ${budget_amount} ${currency} is below EUR/CHF 75,000 — fast-track approval with a single quote is permitted.`,
@@ -168,12 +170,13 @@ export async function POST(req: NextRequest) {
 
   console.log(`[apply_dynamic_category_rules] (${category_l1} / ${category_l2}), ${eligible.length} supplier(s) remain, ${issues.length} issue(s), ${escalations.length} escalation(s)`);
 
-  const result: NodeResult & { eligible_suppliers: EligibleSupplier[] } = {
+  const result: NodeResult & { eligible_suppliers: EligibleSupplier[]; request_interpretation: Partial<RequestInterpretation> } = {
     issues,
     escalations,
     reasonings,
     policy_violations,
     eligible_suppliers: eligible,
+    request_interpretation: { fast_track_eligible },
   };
   return NextResponse.json(result);
 }

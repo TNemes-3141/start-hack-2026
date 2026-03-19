@@ -105,13 +105,37 @@ export const evaluatePreferredSupplierCall  = (input: unknown) => fetchApi("/api
 export async function applyDynamicCategoryRulesCall(input: RequestData): Promise<RequestDataPatch> {
   const raw = await fetchApi("/api/apply_dynamic_category_rules", input) as NodeResult & {
     eligible_suppliers?: EligibleSupplier[];
+    request_interpretation?: Partial<RequestInterpretation>;
   };
   return {
     ...(raw.eligible_suppliers !== undefined ? { eligible_suppliers: raw.eligible_suppliers } : {}),
+    ...(raw.request_interpretation ? { request_interpretation: raw.request_interpretation } : {}),
     ...wrapStage("apply_dynamic_category_rules", raw),
   };
 }
-export const pricingCalculationCall         = (input: unknown) => fetchApi("/api/pricing_calculation",          input).then(r => wrapStage("pricing_calculation",          r));
-export const reevaluateTierCall             = (input: unknown) => fetchApi("/api/reevaluate_tier_from_quote",   input).then(r => wrapStage("reevaluate_tier_from_quote",   r));
-export const scoringAndRankingCall          = (input: unknown) => fetchApi("/api/scoring_and_ranking",          input).then(r => wrapStage("scoring_and_ranking",          r));
+export async function pricingCalculationCall(input: RequestData): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/pricing_calculation", input) as NodeResult & {
+    supplier_shortlist?: RequestData["supplier_shortlist"];
+  };
+  return {
+    ...(raw.supplier_shortlist ? { supplier_shortlist: raw.supplier_shortlist } : {}),
+    ...wrapStage("pricing_calculation", raw),
+  };
+}
+export async function reevaluateTierCall(input: RequestData): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/reevaluate_tier_from_quote", input) as NodeResult & { approval_tier?: ApprovalTier };
+  return {
+    ...(raw.approval_tier ? { approval_tier: raw.approval_tier } : {}),
+    ...wrapStage("reevaluate_tier_from_quote", raw),
+  };
+}
+export async function scoringAndRankingCall(input: RequestData): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/scoring_and_ranking", input) as NodeResult & {
+    supplier_shortlist?: RequestData["supplier_shortlist"];
+  };
+  return {
+    ...(raw.supplier_shortlist ? { supplier_shortlist: raw.supplier_shortlist } : {}),
+    ...wrapStage("scoring_and_ranking", raw),
+  };
+}
 export const finalCheckCall                 = (input: unknown) => fetchApi("/api/final_check",                  input).then(r => wrapStage("final_check",                  r));
