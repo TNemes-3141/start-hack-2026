@@ -489,12 +489,12 @@ function NodeDetailPanel({
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">#{s.rank} {s.supplier_name}</span>
                           <div className="flex gap-1">
-                            {s.preferred && <Badge variant="secondary" className="text-[10px]">Preferred</Badge>}
-                            {s.incumbent && <Badge variant="outline" className="text-[10px]">Incumbent</Badge>}
+                            {s.preferred_supplier && <Badge variant="secondary" className="text-[10px]">Preferred</Badge>}
+                            {s.is_incumbent && <Badge variant="outline" className="text-[10px]">Incumbent</Badge>}
                             {!s.policy_compliant && <Badge variant="destructive" className="text-[10px]">Non-compliant</Badge>}
                           </div>
                         </div>
-                        <Row label="Total Price" value={`€${s.total_price_eur?.toLocaleString()}`} />
+                        <Row label="Total Price" value={`${s.currency ?? ""} ${s.total_price?.toLocaleString()}`} />
                         <Row label="Lead Time" value={`${s.standard_lead_time_days}d standard`} />
                         <Row label="Quality / Risk / ESG" value={`${s.quality_score} / ${s.risk_score} / ${s.esg_score}`} />
                         {s.recommendation_note && <p className="text-muted-foreground italic">{s.recommendation_note}</p>}

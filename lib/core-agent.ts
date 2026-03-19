@@ -1,5 +1,5 @@
 import { createRequestData, mergeRequestData, type RequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
-import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall, approvalTierCall, purelyEligibleSuppliersCall, restrictedSuppliersCall, geographicalRulesCall, evaluatePreferredSupplierCall, applyDynamicCategoryRulesCall, pricingCalculationCall, reevaluateTierCall, scoringAndRankingCall } from "@/lib/api-calls";
+import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall, approvalTierCall, purelyEligibleSuppliersCall, restrictedSuppliersCall, geographicalRulesCall, evaluatePreferredSupplierCall, applyDynamicCategoryRulesCall, pricingCalculationCall, reevaluateTierCall, scoringAndRankingCall, finalCheckCall } from "@/lib/api-calls";
 
 function hasBlocking(data: RequestData): boolean {
   return Object.values(data.stages).some(
@@ -94,6 +94,9 @@ export async function core_agent(
   // ── scoringAndRanking ─────────────────────────────────────────────────────
   await scoringAndRankingCall(currentData).then(namedUpdate("scoring_and_ranking"));
   if (hasBlocking(currentData)) { abort("scoring_and_ranking"); return currentData; }
+
+  // ── finalCheck ────────────────────────────────────────────────────────────
+  await finalCheckCall(currentData).then(namedUpdate("final_check"));
 
   console.log("[core_agent] final RequestData:", JSON.stringify(currentData, null, 2));
   return currentData;

@@ -32,6 +32,7 @@ export type RAGOrchestratorState = {
   isPipelineRunning: boolean;
   mode: OrchestratorMode;
   startPipeline: (form: RequestInterpretation) => Promise<string>;
+  approveAndResume: (existingRunId: string, existingData: RequestData, approvedByLabel: string) => Promise<void>;
 };
 
 type RunRow = {
@@ -180,44 +181,102 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     startHeartbeat(id);
 
     // 3. Run the pipeline in the background — do NOT await, return id immediately.
-    void (async () => {
-      isRunningRef.current = true;
-      try {
-        await core_agent(form, (nodeName, patch) => {
-          // Compute next state from refs — synchronous, no stale closures.
-          const nextData     = mergeRequestData(dataRef.current, patch);
-          const graphId      = NODE_NAME_TO_GRAPH_ID[nodeName];
-          const withUpdate   = graphId
-            ? { ...statusesRef.current, [graphId]: deriveStatus(nodeName, patch) }
-            : statusesRef.current;
-          const nextStatuses = graphId ? propagateWorking(withUpdate, graphId) : withUpdate;
-
-          // Write refs before anything else so the next callback is never stale.
-          dataRef.current     = nextData;
-          statusesRef.current = nextStatuses;
-
-          // Two independent setState calls — no nesting, React batches them.
-          setRequestData(nextData);
-          setNodeStatuses(nextStatuses);
-
-          // Persist to DB — fire-and-forget, don't block the next stage.
-          void patchRun(id, {
-            context_payload:   nextData,
-            node_statuses:     nextStatuses,
-            status:            `${nodeName}_complete`,
-            last_heartbeat_at: new Date().toISOString(),
-          });
-        });
-      } finally {
-        isRunningRef.current = false;
-        void patchRun(id, { status: "done", last_heartbeat_at: new Date().toISOString() });
-        setIsPipelineRunning(false);
-        stopHeartbeat();
-      }
-    })();
+    void runPipeline(id, form);
 
     return id; // Caller gets the ID right after INSERT, not after the pipeline.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { runId, requestData, nodeStatuses, isPipelineRunning, mode: "owner", startPipeline };
+  // ── Internal pipeline executor (reusable for approve-and-resume) ───────────
+
+  const runPipeline = useCallback(async (id: string, form: RequestInterpretation) => {
+    isRunningRef.current = true;
+    try {
+      await core_agent(form, (nodeName, patch) => {
+        // Compute next state from refs — synchronous, no stale closures.
+        const nextData    = mergeRequestData(dataRef.current, patch);
+        const graphId     = NODE_NAME_TO_GRAPH_ID[nodeName];
+        const nodeStatus  = graphId ? deriveStatus(nodeName, patch) : undefined;
+        const withUpdate  = graphId
+          ? { ...statusesRef.current, [graphId]: nodeStatus! }
+          : statusesRef.current;
+        // Only propagate "working" to successors when node is NOT blocking.
+        const nextStatuses = (graphId && nodeStatus !== "escalation")
+          ? propagateWorking(withUpdate, graphId)
+          : withUpdate;
+
+        dataRef.current     = nextData;
+        statusesRef.current = nextStatuses;
+
+        setRequestData(nextData);
+        setNodeStatuses(nextStatuses);
+
+        void patchRun(id, {
+          context_payload:   nextData,
+          node_statuses:     nextStatuses,
+          status:            `${nodeName}_complete`,
+          last_heartbeat_at: new Date().toISOString(),
+        });
+      });
+    } finally {
+      isRunningRef.current = false;
+      // Detect if pipeline aborted due to a blocking issue in any stage.
+      const isBlocked = Object.values(dataRef.current.stages).some(
+        (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
+      );
+      const finalStatuses: NodeStatuses = isBlocked
+        ? statusesRef.current
+        : { ...statusesRef.current, "done": "done" };
+      statusesRef.current = finalStatuses;
+      setNodeStatuses(finalStatuses);
+      void patchRun(id, {
+        status:            isBlocked ? "blocked" : "done",
+        node_statuses:     finalStatuses,
+        last_heartbeat_at: new Date().toISOString(),
+      });
+      setIsPipelineRunning(false);
+      stopHeartbeat();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Approve a blocked run and re-run the pipeline ─────────────────────────
+
+  const approveAndResume = useCallback(async (
+    existingRunId: string,
+    existingData: RequestData,
+    approvedByLabel: string,
+  ): Promise<void> => {
+    const approvalNote = `Approved by ${approvedByLabel} on ${new Date().toISOString().slice(0, 10)}`;
+    const updatedInterp: RequestInterpretation = {
+      ...existingData.request_interpretation,
+      requester_instruction: approvalNote,
+    };
+    const initData: RequestData = createRequestData(updatedInterp);
+    const initStatuses: NodeStatuses = {
+      ...INITIAL_STATUSES,
+      "request-submitted": "done",
+      "translation":        "working",
+      "internal-coherence": "working",
+    };
+
+    // Reset the existing DB row and re-use it.
+    await patchRun(existingRunId, {
+      status:            "group1_active",
+      context_payload:   initData,
+      node_statuses:     initStatuses,
+      active_client_id:  CLIENT_ID,
+      last_heartbeat_at: new Date().toISOString(),
+    });
+
+    dataRef.current     = initData;
+    statusesRef.current = initStatuses;
+    setRunId(existingRunId);
+    setRequestData(initData);
+    setNodeStatuses(initStatuses);
+    setIsPipelineRunning(true);
+    startHeartbeat(existingRunId);
+
+    void runPipeline(existingRunId, updatedInterp);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { runId, requestData, nodeStatuses, isPipelineRunning, mode: "owner", startPipeline, approveAndResume };
 }

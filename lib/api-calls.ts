@@ -138,4 +138,14 @@ export async function scoringAndRankingCall(input: RequestData): Promise<Request
     ...wrapStage("scoring_and_ranking", raw),
   };
 }
-export const finalCheckCall                 = (input: unknown) => fetchApi("/api/final_check",                  input).then(r => wrapStage("final_check",                  r));
+export async function finalCheckCall(input: RequestData): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/final_check", input) as NodeResult & {
+    recommendation?: RequestData["recommendation"];
+    audit_trail?: RequestData["audit_trail"];
+  };
+  return {
+    ...(raw.recommendation ? { recommendation: raw.recommendation } : {}),
+    ...(raw.audit_trail    ? { audit_trail:    raw.audit_trail    } : {}),
+    ...wrapStage("final_check", raw),
+  };
+}

@@ -8,6 +8,7 @@ import { PipelineGraphView } from "@/components/pipeline-graph-view"
 import { INITIAL_STATUSES, type NodeStatuses } from "@/lib/pipeline-graph"
 import { createRequestData, type RequestData } from "@/lib/request-data"
 import { Badge } from "@/components/ui/badge"
+import { useRequestStore } from "@/lib/request-store"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,19 +43,21 @@ function timeAgo(iso: string): string {
 type StatusMeta = { label: string; dot: string; badge: "default" | "secondary" | "destructive" | "outline"; bar: string }
 
 function getStatusMeta(status: string): StatusMeta {
-  if (status === "done")             return { label: "Completed",   dot: "bg-emerald-500",           badge: "default",     bar: "bg-emerald-500" }
-  if (status === "aborted")          return { label: "Aborted",     dot: "bg-red-500",               badge: "destructive", bar: "bg-red-500" }
-  if (status === "idle")             return { label: "Idle",        dot: "bg-muted-foreground/40",   badge: "outline",     bar: "bg-muted-foreground/30" }
-  if (status.endsWith("_active"))    return { label: "Running",     dot: "bg-blue-500 animate-pulse", badge: "secondary",   bar: "bg-blue-500" }
-  if (status.endsWith("_complete"))  return { label: "In Progress", dot: "bg-sky-400",               badge: "secondary",   bar: "bg-sky-400" }
-  return                                    { label: status,        dot: "bg-muted-foreground/40",   badge: "outline",     bar: "bg-muted-foreground/30" }
+  if (status === "done")             return { label: "Completed",          dot: "bg-emerald-500",            badge: "default",     bar: "bg-emerald-500" }
+  if (status === "aborted")          return { label: "Aborted",            dot: "bg-red-500",                badge: "destructive", bar: "bg-red-500" }
+  if (status === "blocked")          return { label: "Approval Required",  dot: "bg-amber-500 animate-pulse", badge: "destructive", bar: "bg-amber-500" }
+  if (status === "idle")             return { label: "Idle",               dot: "bg-muted-foreground/40",    badge: "outline",     bar: "bg-muted-foreground/30" }
+  if (status.endsWith("_active"))    return { label: "Running",            dot: "bg-blue-500 animate-pulse",  badge: "secondary",   bar: "bg-blue-500" }
+  if (status.endsWith("_complete"))  return { label: "In Progress",        dot: "bg-sky-400",                badge: "secondary",   bar: "bg-sky-400" }
+  return                                    { label: status,               dot: "bg-muted-foreground/40",    badge: "outline",     bar: "bg-muted-foreground/30" }
 }
 
 function countIssues(run: RunRow) {
   let warnings = 0, escalations = 0
   if (run.context_payload?.stages) {
     for (const stage of Object.values(run.context_payload.stages)) {
-      escalations += stage.escalations?.filter((e) => e.blocking).length ?? 0
+      escalations += (stage.escalations?.filter((e) => e.blocking).length ?? 0)
+                + (stage.issues?.filter((i) => i.blocking).length ?? 0)
       warnings    += stage.issues?.filter((i) => !i.blocking).length ?? 0
     }
   }
@@ -170,24 +173,6 @@ function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 
-function EmptyList({ closed }: { closed: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center px-8 py-16">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-muted">
-        <GitBranch className="h-5 w-5 text-muted-foreground" />
-      </div>
-      <p className="text-sm font-medium text-foreground">
-        {closed ? "No closed requests" : "No open requests"}
-      </p>
-      <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
-        {closed
-          ? "Requests will appear here once they finish processing."
-          : "Submit a new request from the sidebar to kick off the procurement pipeline."}
-      </p>
-    </div>
-  )
-}
-
 // ── Escalation filter helpers ─────────────────────────────────────────────────
 
 // Returns true if the run has at least one BLOCKING escalation.
@@ -200,6 +185,12 @@ function runHasEscalationFor(run: RunRow, targets: string[]): boolean {
       if (!e.blocking) continue
       if (targets.length === 0) return true
       if (targets.some((t) => e.escalate_to?.toLowerCase().includes(t.toLowerCase())))
+        return true
+    }
+    for (const i of stage.issues ?? []) {
+      if (!i.blocking) continue
+      if (targets.length === 0) return true
+      if (targets.some((t) => i.escalate_to?.toLowerCase().includes(t.toLowerCase())))
         return true
     }
   }
@@ -217,6 +208,12 @@ export function RunsListPage({
   escalateTo?: string[]
 }) {
   const isEscalationMode = escalateTo !== undefined
+
+  const { approveAndResume } = useRequestStore()
+  const [roleLabel, setRoleLabel] = useState<string | null>(null)
+  useEffect(() => {
+    fetch("/api/session").then(r => r.json()).then((d: { roleLabel: string | null }) => setRoleLabel(d.roleLabel)).catch(() => null)
+  }, [])
 
   const searchParams  = useSearchParams()
   const autoRunId     = searchParams.get("run")
@@ -348,7 +345,17 @@ export function RunsListPage({
   }
 
   if (selectedRun) {
-    const isRunning = !isClosed(selectedRun.status) && selectedRun.status !== "idle"
+    const isRunning = !isClosed(selectedRun.status) && selectedRun.status !== "idle" && selectedRun.status !== "blocked"
+    const isBlocked = selectedRun.status === "blocked"
+    const handleApprove = isBlocked
+      ? async () => {
+          await approveAndResume(
+            selectedRun.id,
+            selectedRun.context_payload ?? createRequestData(),
+            roleLabel ?? "Unknown Role",
+          )
+        }
+      : undefined
     return (
       <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6">
         <GraphHeader run={selectedRun} onBack={() => setSelectedRun(null)} />
@@ -358,6 +365,7 @@ export function RunsListPage({
             requestData={selectedRun.context_payload ?? createRequestData()}
             isPipelineRunning={isRunning}
             mode="owner"
+            onApprove={handleApprove}
           />
         </div>
       </div>

@@ -84,7 +84,12 @@ export function propagateWorking(statuses: NodeStatuses, updatedId: string): Nod
   for (const successor of (SUCCESSORS[updatedId] ?? [])) {
     if (next[successor] !== "outstanding") continue;
     const required = REQUIRED_PREDECESSORS[successor];
-    if (required && !required.every((p) => TERMINAL_STATUSES.has(next[p]))) continue;
+    if (required) {
+      // All required predecessors must be terminal …
+      if (!required.every((p) => TERMINAL_STATUSES.has(next[p]))) continue;
+      // … but none of them may be blocked (escalation propagates the block, not work)
+      if (required.some((p) => next[p] === "escalation")) continue;
+    }
     next[successor] = "working";
   }
   return next;

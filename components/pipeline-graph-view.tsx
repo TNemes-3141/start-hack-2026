@@ -28,6 +28,7 @@ import {
   Ban,
   FileText,
   Eye,
+  ThumbsUp,
 } from "lucide-react"
 import type { PipelineNodeStatus, NodeStatuses } from "@/lib/pipeline-graph"
 import type { OrchestratorMode } from "@/hooks/use-rag-orchestrator"
@@ -411,12 +412,12 @@ function NodeDetailPanel({
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">#{s.rank} {s.supplier_name}</span>
                           <div className="flex gap-1">
-                            {s.preferred && <Badge variant="secondary" className="text-[10px]">Preferred</Badge>}
-                            {s.incumbent && <Badge variant="outline" className="text-[10px]">Incumbent</Badge>}
+                            {s.preferred_supplier && <Badge variant="secondary" className="text-[10px]">Preferred</Badge>}
+                            {s.is_incumbent && <Badge variant="outline" className="text-[10px]">Incumbent</Badge>}
                             {!s.policy_compliant && <Badge variant="destructive" className="text-[10px]">Non-compliant</Badge>}
                           </div>
                         </div>
-                        <Row label="Total Price" value={`€${s.total_price_eur?.toLocaleString()}`} />
+                        <Row label="Total Price" value={`${s.currency ?? ""} ${s.total_price?.toLocaleString()}`} />
                         <Row label="Lead Time" value={`${s.standard_lead_time_days}d standard`} />
                         <Row label="Quality / Risk / ESG" value={`${s.quality_score} / ${s.risk_score} / ${s.esg_score}`} />
                         {s.recommendation_note && <p className="text-muted-foreground italic">{s.recommendation_note}</p>}
@@ -500,11 +501,13 @@ export function PipelineGraphView({
   requestData,
   isPipelineRunning,
   mode,
+  onApprove,
 }: {
   nodeStatuses: NodeStatuses
   requestData: RequestData
   isPipelineRunning: boolean
   mode?: OrchestratorMode
+  onApprove?: () => Promise<void>
 }) {
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -512,6 +515,7 @@ export function PipelineGraphView({
   const [selectedNodeId, setSelectedNodeId] = useState<NodeId | null>(null)
   const lastNodeId = useRef<NodeId | null>(null)
   if (selectedNodeId) lastNodeId.current = selectedNodeId
+  const [isApproving, setIsApproving] = useState(false)
 
   const workingStartTimes = useRef<Partial<Record<string, number>>>({})
   useEffect(() => {
@@ -553,6 +557,21 @@ export function PipelineGraphView({
     instance.fitView({ nodes: [{ id: "request-submitted" }], padding: 3, maxZoom: 1, duration: 0 })
   }, [])
 
+  // Derive blocked state: any stage has a blocking escalation or issue
+  const isBlocked = !isPipelineRunning && Object.values(requestData.stages).some(
+    (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
+  )
+
+  // First blocking escalation for the banner description
+  const firstBlockingEscalation = Object.values(requestData.stages)
+    .flatMap((s) => s.escalations ?? [])
+    .find((e) => e.blocking)
+  const firstBlockingIssue = Object.values(requestData.stages)
+    .flatMap((s) => s.issues ?? [])
+    .find((i) => i.blocking)
+  const blockingTrigger = firstBlockingEscalation?.trigger ?? firstBlockingIssue?.trigger ?? "A blocking issue requires human approval before the pipeline can continue."
+  const escalateTo = firstBlockingEscalation?.escalate_to ?? firstBlockingIssue?.escalate_to
+
   return (
     <div className="flex flex-col gap-4 h-full">
       {isPipelineRunning && mode === "owner" && (
@@ -565,6 +584,35 @@ export function PipelineGraphView({
         <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 shrink-0">
           <Eye className="h-4 w-4" />
           Read-only — another tab is running this pipeline. Updates will appear in real-time.
+        </div>
+      )}
+      {isBlocked && (
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 shrink-0">
+          <div className="flex items-start gap-3 min-w-0">
+            <ShieldAlert className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-destructive">Pipeline blocked — approval required</p>
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{blockingTrigger}</p>
+              {escalateTo && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="font-medium">Escalate to:</span> {escalateTo}
+                </p>
+              )}
+            </div>
+          </div>
+          {onApprove && (
+            <button
+              onClick={async () => {
+                setIsApproving(true)
+                try { await onApprove() } finally { setIsApproving(false) }
+              }}
+              disabled={isApproving}
+              className="shrink-0 flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ThumbsUp className="h-3.5 w-3.5" />
+              {isApproving ? "Approving…" : "Approve & Resume"}
+            </button>
+          )}
         </div>
       )}
       <div className="flex-1 rounded-lg border border-border bg-background min-h-0">
