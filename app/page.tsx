@@ -51,7 +51,7 @@ export default function Home() {
               <Button
                 type="submit"
                 variant="outline"
-                className="w-full h-auto justify-start gap-4 px-4 py-3"
+                className="w-full h-auto justify-start gap-4 px-4 py-3 cursor-pointer"
               >
                 <span className="text-muted-foreground">{icon}</span>
                 <span className="flex flex-col items-start gap-0.5">
