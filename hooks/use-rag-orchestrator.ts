@@ -1,53 +1,58 @@
-"use client";
+// This file defines a React hook `useRAGOrchestrator` that manages the state and execution of a pipeline for processing requests.
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { supabaseBrowser } from "@/lib/supabase-browser";
-import { core_agent } from "@/lib/core-agent";
+"use client"; // Indicates that this file is a client-side module.
+
+import { useEffect, useRef, useState, useCallback } from "react"; // React hooks for managing state and lifecycle.
+import { v4 as uuidv4 } from "uuid"; // Generates unique IDs.
+import { supabaseBrowser } from "@/lib/supabase-browser"; // Supabase client for interacting with the database.
+import { core_agent } from "@/lib/core-agent"; // Core agent for executing pipeline stages.
 import {
-  createRequestData,
-  mergeRequestData,
-  type RequestData,
-  type RequestInterpretation,
-  type StageId,
+  createRequestData, // Utility to create initial request data.
+  mergeRequestData, // Utility to merge updated request data.
+  type RequestData, // Type definition for request data.
+  type RequestInterpretation, // Type definition for request interpretation.
+  type StageId, // Type definition for stage IDs.
 } from "@/lib/request-data";
 import {
-  INITIAL_STATUSES,
-  NODE_NAME_TO_GRAPH_ID,
-  TERMINAL_STATUSES,
-  deriveStatus,
-  propagateWorking,
-  type NodeStatuses,
-  type PipelineNodeStatus,
+  INITIAL_STATUSES, // Initial statuses for pipeline nodes.
+  NODE_NAME_TO_GRAPH_ID, // Mapping of node names to graph IDs.
+  TERMINAL_STATUSES, // Set of terminal statuses for pipeline nodes.
+  deriveStatus, // Utility to derive the status of a node.
+  propagateWorking, // Utility to propagate "working" status to successors.
+  type NodeStatuses, // Type definition for node statuses.
+  type PipelineNodeStatus, // Type definition for pipeline node status.
 } from "@/lib/pipeline-graph";
 
+// Constants for client ID, heartbeat interval, and Supabase configuration.
 const CLIENT_ID: string = uuidv4();
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
 
+// Type definitions for orchestrator mode and state.
 export type OrchestratorMode = "owner" | "observer" | "idle";
-
 export type RAGOrchestratorState = {
-  runId: string | null;
-  requestData: RequestData;
-  nodeStatuses: NodeStatuses;
-  isPipelineRunning: boolean;
-  mode: OrchestratorMode;
-  startPipeline: (form: RequestInterpretation) => Promise<string>;
-  approveAndResume: (existingRunId: string, existingData: RequestData, approvedByLabel: string) => Promise<void>;
-  resolveIssue: (runId: string, data: RequestData, existingNodeStatuses: NodeStatuses, stageKey: string, issueId: string) => Promise<void>;
+  runId: string | null; // Current pipeline run ID.
+  requestData: RequestData; // Current request data.
+  nodeStatuses: NodeStatuses; // Current statuses of pipeline nodes.
+  isPipelineRunning: boolean; // Whether the pipeline is running.
+  mode: OrchestratorMode; // Mode of the orchestrator.
+  startPipeline: (form: RequestInterpretation) => Promise<string>; // Function to start a new pipeline.
+  approveAndResume: (existingRunId: string, existingData: RequestData, approvedByLabel: string) => Promise<void>; // Function to approve and resume a blocked pipeline.
+  resolveIssue: (runId: string, data: RequestData, existingNodeStatuses: NodeStatuses, stageKey: string, issueId: string) => Promise<void>; // Function to resolve a blocking issue.
 };
 
+// Type definition for a database row representing a pipeline run.
 type RunRow = {
-  id: string;
-  status: string;
-  context_payload: RequestData;
-  node_statuses: NodeStatuses;
-  active_client_id: string | null;
-  last_heartbeat_at: string | null;
+  id: string; // Unique ID of the run.
+  status: string; // Current status of the run.
+  context_payload: RequestData; // Request data associated with the run.
+  node_statuses: NodeStatuses; // Node statuses associated with the run.
+  active_client_id: string | null; // ID of the active client.
+  last_heartbeat_at: string | null; // Timestamp of the last heartbeat.
 };
 
+// Utility function to create headers for Supabase requests.
 function makeHeaders(withContentType = false): Record<string, string> {
   const h: Record<string, string> = {
     apikey: SUPABASE_KEY,
@@ -57,6 +62,7 @@ function makeHeaders(withContentType = false): Record<string, string> {
   return h;
 }
 
+// Utility function to update a pipeline run in the database.
 async function patchRun(id: string, patch: Record<string, unknown>) {
   await fetch(`${SUPABASE_URL}/rest/v1/rag_pipeline_runs?id=eq.${id}`, {
     method: "PATCH",
@@ -79,22 +85,27 @@ function computeCompletedStages(graphStatuses: NodeStatuses): Set<string> {
   );
 }
 
+// Main hook that manages the pipeline orchestrator.
 export function useRAGOrchestrator(): RAGOrchestratorState {
-  const [runId, setRunId]                         = useState<string | null>(null);
-  const [requestData, setRequestData]             = useState<RequestData>(createRequestData());
-  const [nodeStatuses, setNodeStatuses]           = useState<NodeStatuses>(INITIAL_STATUSES);
-  const [isPipelineRunning, setIsPipelineRunning] = useState(false);
+  // React state for run ID, request data, and node statuses.
+  const [runId, setRunId]           = useState<string | null>(null);
+  const [requestData, setRequestData] = useState<RequestData>(createRequestData());
+  const [nodeStatuses, setNodeStatuses] = useState<NodeStatuses>(INITIAL_STATUSES);
 
-  // Refs hold the authoritative values during pipeline execution.
-  // Using refs avoids stale-closure issues in async callbacks and means
-  // we never need setState updater functions — no nested setState.
+  // Derived state to determine if the pipeline is blocked or done.
+  const isBlocked = Object.values(requestData.stages).some(
+    (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
+  );
+  const isDone = nodeStatuses["done"] === "done";
+  const isPipelineRunning = runId !== null && !isBlocked && !isDone;
+
+  // Refs to hold authoritative values during pipeline execution.
   const dataRef      = useRef<RequestData>(createRequestData());
   const statusesRef  = useRef<NodeStatuses>(INITIAL_STATUSES);
-  // While core_agent is running, we suppress our own Realtime echoes.
-  const isRunningRef = useRef(false);
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isRunningRef = useRef(false); // Tracks whether the pipeline is running.
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null); // Tracks the heartbeat interval.
 
-  // ── Heartbeat ──────────────────────────────────────────────────────────────
+  // ── Heartbeat management ─────────────────────────────────────────────────
 
   function startHeartbeat(id: string) {
     stopHeartbeat();
@@ -108,7 +119,7 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     heartbeatRef.current = null;
   }
 
-  // ── Apply a DB row to both refs and React state ────────────────────────────
+  // ── Apply a database row to both refs and React state ────────────────────
 
   function applyRunRow(run: Pick<RunRow, "context_payload" | "node_statuses">) {
     const data     = run.context_payload ?? createRequestData();
@@ -119,7 +130,7 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     setNodeStatuses(statuses);
   }
 
-  // ── On mount: restore the most recent in-progress run ─────────────────────
+  // ── On mount: restore the most recent in-progress run ────────────────────
 
   useEffect(() => {
     async function init() {
@@ -136,7 +147,7 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     void init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Realtime: sync state from DB, but skip echoes of our own writes ────────
+  // ── Realtime: sync state from database, but skip echoes of our own writes ─
 
   useEffect(() => {
     if (!runId) return;
@@ -146,13 +157,10 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "rag_pipeline_runs", filter: `id=eq.${runId}` },
         (payload) => {
-          // While we are the one writing every node result, skip the echo.
-          // This prevents a double-render ~150 ms after every local update.
-          if (isRunningRef.current) return;
+          if (isRunningRef.current) return; // Skip echoes of our own writes.
           const updated = payload.new as RunRow;
           applyRunRow(updated);
           if (updated.status === "done" || updated.status === "aborted") {
-            setIsPipelineRunning(false);
             stopHeartbeat();
           }
         },
@@ -163,7 +171,7 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
 
   useEffect(() => () => stopHeartbeat(), []);
 
-  // ── Start a new pipeline run ───────────────────────────────────────────────
+  // ── Start a new pipeline run ─────────────────────────────────────────────
 
   const startPipeline = useCallback(async (form: RequestInterpretation): Promise<string> => {
     const initData: RequestData  = createRequestData(form);
@@ -174,7 +182,6 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
       "internal-coherence": "working",
     };
 
-    // 1. Create the DB row. This is the only awaited step before returning.
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rag_pipeline_runs`, {
       method: "POST",
       headers: { ...makeHeaders(true), Prefer: "return=representation" },
@@ -189,22 +196,19 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     const [row]: RunRow[] = await res.json();
     const id = row.id;
 
-    // 2. Sync refs and React state.
     dataRef.current     = initData;
     statusesRef.current = initStatuses;
     setRunId(id);
     setRequestData(initData);
     setNodeStatuses(initStatuses);
-    setIsPipelineRunning(true);
     startHeartbeat(id);
 
-    // 3. Run the pipeline in the background — do NOT await, return id immediately.
     void runPipeline(id, form);
 
-    return id; // Caller gets the ID right after INSERT, not after the pipeline.
+    return id;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Internal pipeline executor ─────────────────────────────────────────────
+  // ── Internal pipeline executor ───────────────────────────────────────────
 
   const runPipeline = useCallback(async (
     id: string,
@@ -213,23 +217,18 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     resumeFrom?: { data: RequestData; completedStages: Set<string> },
   ) => {
     isRunningRef.current = true;
-    // When resuming, seed the data ref with the existing run's data so downstream
-    // stages receive correct inputs (eligible_suppliers, approval_tier, etc.).
     if (resumeFrom) {
       dataRef.current = resumeFrom.data;
     }
     try {
       await core_agent(form, (nodeName, patch) => {
-        // Compute next state from refs — synchronous, no stale closures.
         const nextData    = mergeRequestData(dataRef.current, patch);
         const graphId     = NODE_NAME_TO_GRAPH_ID[nodeName];
         const nodeStatus  = graphId ? deriveStatus(nodeName, patch) : undefined;
-        // On an approved/resumed run, treat blocking nodes as warnings so propagation continues.
         const effectiveStatus = (skipBlockingChecks && nodeStatus === "escalation") ? "warning" : nodeStatus;
         const withUpdate  = graphId
           ? { ...statusesRef.current, [graphId]: effectiveStatus! }
           : statusesRef.current;
-        // Only propagate "working" to successors when node is NOT blocking.
         const nextStatuses = (graphId && effectiveStatus !== "escalation")
           ? propagateWorking(withUpdate, graphId)
           : withUpdate;
@@ -249,7 +248,6 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
       }, { skipBlockingChecks, resumeFrom });
     } finally {
       isRunningRef.current = false;
-      // When skipBlockingChecks is true (approved/resumed run), never re-block at completion.
       const isBlocked = !skipBlockingChecks && Object.values(dataRef.current.stages).some(
         (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
       );
@@ -263,12 +261,11 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
         node_statuses:     finalStatuses,
         last_heartbeat_at: new Date().toISOString(),
       });
-      setIsPipelineRunning(false);
       stopHeartbeat();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Approve a blocked run and re-run the pipeline from scratch ─────────────
+  // ── Approve a blocked run and re-run the pipeline from scratch ───────────
 
   const approveAndResume = useCallback(async (
     existingRunId: string,
@@ -288,7 +285,6 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
       "internal-coherence": "working",
     };
 
-    // Reset the existing DB row and re-use it.
     await patchRun(existingRunId, {
       status:            "group1_active",
       context_payload:   initData,
@@ -302,13 +298,12 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     setRunId(existingRunId);
     setRequestData(initData);
     setNodeStatuses(initStatuses);
-    setIsPipelineRunning(true);
     startHeartbeat(existingRunId);
 
     void runPipeline(existingRunId, updatedInterp, true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Resolve a single blocking issue and resume from that point ────────────
+  // ── Resolve a single blocking issue and resume from that point ───────────
 
   const resolveIssue = useCallback(async (
     runId: string,
@@ -336,16 +331,13 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
       },
     };
 
-    // Persist the resolved state first.
     await patchRun(runId, { context_payload: updatedData });
 
-    // Check whether any blocking issues or escalations remain.
     const stillBlocked = Object.values(updatedData.stages).some(
       (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
     );
     if (stillBlocked) return;
 
-    // All blocking cleared — resume from where the pipeline was blocked.
     const approvalNote = `Resolved by ${resolvedByLabel} on ${new Date().toISOString().slice(0, 10)}`;
     const updatedInterp: RequestInterpretation = {
       ...updatedData.request_interpretation,
@@ -356,7 +348,6 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
       request_interpretation: updatedInterp,
     };
 
-    // Keep statuses from the existing run; reset any "working" nodes to "outstanding".
     const initStatuses: NodeStatuses = Object.fromEntries(
       Object.entries(existingNodeStatuses).map(([k, v]) => [k, v === "working" ? "outstanding" : v]),
     ) as NodeStatuses;
@@ -374,10 +365,8 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     setRunId(runId);
     setRequestData(updatedDataWithNote);
     setNodeStatuses(initStatuses);
-    setIsPipelineRunning(true);
     startHeartbeat(runId);
 
-    // Skip stages that already completed in the previous run.
     const completedStages = computeCompletedStages(existingNodeStatuses);
     void runPipeline(runId, updatedInterp, true, { data: updatedDataWithNote, completedStages });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
