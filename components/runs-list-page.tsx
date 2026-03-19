@@ -146,12 +146,12 @@ function RunCard({ run, onClick, onDelete }: { run: RunRow; onClick: () => void;
           </div>
 
           {(catL1 || catL2) && (
-            <p className="text-xs text-muted-foreground pl-[18px]">
+            <p className="text-xs text-muted-foreground pl-4.5">
               {[catL1, catL2].filter(Boolean).join(" · ")}
             </p>
           )}
 
-          <div className="flex items-center gap-1.5 pl-[18px] flex-wrap">
+          <div className="flex items-center gap-1.5 pl-4.5 flex-wrap">
             {bu && (
               <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{bu}</span>
             )}
@@ -315,12 +315,12 @@ function EscalationInfoCard({ requestData }: { requestData: RequestData }) {
         )}
       </div>
       <div className="flex flex-col gap-1.5">
-        {escalations.map((e) => (
+        {escalations.sort((esc1, esc2) => esc1.blocking ? -1 : 1).map((e) => (
           <div
             key={e.escalation_id}
             className="flex items-start gap-3 rounded-md border bg-background px-3 py-2"
           >
-            <span className={`mt-px inline-flex h-2 w-2 shrink-0 rounded-full ${e.blocking ? "bg-destructive" : "bg-amber-500"}`} />
+            <span className={`mt-1.25 inline-flex h-2 w-2 shrink-0 rounded-full ${e.blocking ? "bg-destructive" : "bg-amber-500"}`} />
             <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
               <span className="font-mono text-[11px] font-semibold text-muted-foreground shrink-0">{e.rule}</span>
               <span className="text-xs text-foreground leading-snug">{e.trigger}</span>
@@ -529,10 +529,10 @@ export function RunsListPage({
         }
       : undefined
     return (
-      <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6">
+      <div className="flex flex-col -m-6">
         <GraphHeader run={selectedRun} onBack={() => setSelectedRun(null)} />
         <EscalationInfoCard requestData={selectedRun.context_payload ?? createRequestData()} />
-        <div className="flex-1 p-6 min-h-0 h-full">
+        <div className="p-6 h-[calc(100vh-3.5rem-3rem)]">
           <PipelineGraphView
             nodeStatuses={selectedRun.node_statuses ?? INITIAL_STATUSES}
             requestData={selectedRun.context_payload ?? createRequestData()}

@@ -233,6 +233,21 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
           ? propagateWorking(withUpdate, graphId)
           : withUpdate;
 
+        
+        // console.log("skip-blocking-checks:", skipBlockingChecks, "for", nodeName, "with", nodeStatus, "and effectiveStatus", effectiveStatus)
+
+        if (nodeName === "final_check") {
+          let all_good = !(Object.entries(nextStatuses) as [string, PipelineNodeStatus][]).some(([key, value]) => value === "escalation" || value === "warning")
+          if (all_good) {
+            nextStatuses["done"] = "done"
+          } else {
+            nextStatuses["done"] = "escalation"
+          }
+        }
+
+
+
+
         dataRef.current     = nextData;
         statusesRef.current = nextStatuses;
 
