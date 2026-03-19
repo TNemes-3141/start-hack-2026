@@ -25,9 +25,7 @@ import {
   TriangleAlert,
   Info,
   Ban,
-  ScrollText,
   FileText,
-  ChevronRight,
 } from "lucide-react"
 import { useRequestStore, type PipelineNodeStatus } from "@/lib/request-store"
 import type { RequestData } from "@/lib/request-data"
@@ -130,41 +128,64 @@ const nodeLabels: Record<NodeId, string> = {
 }
 
 const nodeDefinitions: Omit<Node, "data">[] = [
-  { id: "request-submitted",         type: "status", position: { x: 420, y: 0    } },
+  // ── Entry ──────────────────────────────────────────────────────────────────
+  { id: "request-submitted",         type: "status", position: { x: 200, y: 0    } },
+
+  // ── Group 1 (parallel) ─────────────────────────────────────────────────────
+  // Left branch: Translation (single node)
   { id: "translation",               type: "status", position: { x: 50,  y: 120  } },
-  { id: "internal-coherence",        type: "status", position: { x: 310, y: 120  } },
-  { id: "missing-required-data",     type: "status", position: { x: 570, y: 120  } },
-  { id: "check-available-products",   type: "status", position: { x: 830, y: 120  } },
-  { id: "inappropriate-requests",    type: "status", position: { x: 420, y: 260  } },
-  { id: "apply-cat-rules-1",         type: "status", position: { x: 100, y: 380  } },
-  { id: "approval-tier",             type: "status", position: { x: 400, y: 380  } },
-  { id: "precedence-lookup",         type: "status", position: { x: 700, y: 380  } },
-  { id: "purely-eligible-suppliers", type: "status", position: { x: 400, y: 500  } },
-  { id: "restricted-suppliers",      type: "status", position: { x: 200, y: 620  } },
-  { id: "check-eligible-supplier",   type: "status", position: { x: 600, y: 620  } },
-  { id: "apply-cat-rules-2",         type: "status", position: { x: 400, y: 740  } },
-  { id: "pricing-calculation",       type: "status", position: { x: 400, y: 860  } },
-  { id: "re-evaluate-tier",          type: "status", position: { x: 400, y: 980  } },
-  { id: "scoring-ranking",           type: "status", position: { x: 400, y: 1100 } },
-  { id: "final-check",               type: "status", position: { x: 400, y: 1220 } },
-  { id: "done",                      type: "status", position: { x: 400, y: 1340 } },
+  // Right branch: Internal Coherence → Missing Required Data → Check Available Products
+  { id: "internal-coherence",        type: "status", position: { x: 360, y: 120  } },
+  { id: "missing-required-data",     type: "status", position: { x: 360, y: 240  } },
+  { id: "check-available-products",  type: "status", position: { x: 360, y: 360  } },
+
+  // ── Sync / sequential ──────────────────────────────────────────────────────
+  { id: "inappropriate-requests",    type: "status", position: { x: 200, y: 500  } },
+
+  // ── Group 2 (parallel) ─────────────────────────────────────────────────────
+  // Left branch: Apply Category Rules (single node)
+  { id: "apply-cat-rules-1",         type: "status", position: { x: 50,  y: 640  } },
+  // Right branch: Precedence Lookup → Approval Tier
+  { id: "precedence-lookup",         type: "status", position: { x: 360, y: 640  } },
+  { id: "approval-tier",             type: "status", position: { x: 360, y: 760  } },
+
+  // ── Rest (sequential) ──────────────────────────────────────────────────────
+  { id: "purely-eligible-suppliers", type: "status", position: { x: 200, y: 900  } },
+  { id: "restricted-suppliers",      type: "status", position: { x: 50,  y: 1020 } },
+  { id: "check-eligible-supplier",   type: "status", position: { x: 360, y: 1020 } },
+  { id: "apply-cat-rules-2",         type: "status", position: { x: 200, y: 1140 } },
+  { id: "pricing-calculation",       type: "status", position: { x: 200, y: 1260 } },
+  { id: "re-evaluate-tier",          type: "status", position: { x: 200, y: 1380 } },
+  { id: "scoring-ranking",           type: "status", position: { x: 200, y: 1500 } },
+  { id: "final-check",               type: "status", position: { x: 200, y: 1620 } },
+  { id: "done",                      type: "status", position: { x: 200, y: 1740 } },
 ]
 
 const edges: Edge[] = [
+  // request-submitted fans out to both parallel branches
   { id: "e-rs-tr",    source: "request-submitted",         target: "translation" },
   { id: "e-rs-ic",    source: "request-submitted",         target: "internal-coherence" },
-  { id: "e-rs-mrd",   source: "request-submitted",         target: "missing-required-data" },
-  { id: "e-rs-cap",   source: "request-submitted",         target: "check-available-products" },
+
+  // Right branch of Group 1 (sequential)
+  { id: "e-ic-mrd",   source: "internal-coherence",        target: "missing-required-data" },
+  { id: "e-mrd-cap",  source: "missing-required-data",     target: "check-available-products" },
+
+  // Both branches fan in to Inappropriate Requests
   { id: "e-tr-ir",    source: "translation",               target: "inappropriate-requests" },
-  { id: "e-ic-ir",    source: "internal-coherence",        target: "inappropriate-requests" },
-  { id: "e-mrd-ir",   source: "missing-required-data",     target: "inappropriate-requests" },
-  { id: "e-cap-ir",   source: "check-available-products",   target: "inappropriate-requests" },
+  { id: "e-cap-ir",   source: "check-available-products",  target: "inappropriate-requests" },
+
+  // Inappropriate Requests fans out to both parallel branches of Group 2
   { id: "e-ir-acr1",  source: "inappropriate-requests",    target: "apply-cat-rules-1" },
-  { id: "e-ir-at",    source: "inappropriate-requests",    target: "approval-tier" },
   { id: "e-ir-pl",    source: "inappropriate-requests",    target: "precedence-lookup" },
+
+  // Right branch of Group 2 (sequential)
+  { id: "e-pl-at",    source: "precedence-lookup",         target: "approval-tier" },
+
+  // Both branches fan in to Purely Eligible Suppliers
   { id: "e-acr1-pes", source: "apply-cat-rules-1",         target: "purely-eligible-suppliers" },
   { id: "e-at-pes",   source: "approval-tier",             target: "purely-eligible-suppliers" },
-  { id: "e-pl-pes",   source: "precedence-lookup",         target: "purely-eligible-suppliers" },
+
+  // Rest (sequential / existing)
   { id: "e-pes-rs",   source: "purely-eligible-suppliers", target: "restricted-suppliers" },
   { id: "e-pes-ces",  source: "purely-eligible-suppliers", target: "check-eligible-supplier" },
   { id: "e-rs-acr2",  source: "restricted-suppliers",      target: "apply-cat-rules-2" },
@@ -177,6 +198,26 @@ const edges: Edge[] = [
 ]
 
 // --- Node detail panel ---
+
+// Map UI node IDs to pipeline stage IDs
+const nodeToStageId: Partial<Record<NodeId, string>> = {
+  "translation":               "translation",
+  "internal-coherence":        "internal_coherence",
+  "missing-required-data":     "missing_required_data",
+  "check-available-products":  "check_available_products",
+  "inappropriate-requests":    "inappropriate_requests",
+  "apply-cat-rules-1":         "apply_category_rules",
+  "apply-cat-rules-2":         "apply_category_rules",
+  "approval-tier":             "approval_tier",
+  "precedence-lookup":         "precedence_lookup",
+  "purely-eligible-suppliers": "purely_eligible_suppliers",
+  "restricted-suppliers":      "restricted_suppliers",
+  "check-eligible-supplier":   "check_eligible_suppliers",
+  "pricing-calculation":       "pricing_calculation",
+  "re-evaluate-tier":          "reevaluate_tier_from_quote",
+  "scoring-ranking":           "scoring_and_ranking",
+  "final-check":               "scoring_and_ranking",
+}
 
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
@@ -207,33 +248,26 @@ function NodeDetailPanel({
   const label = nodeLabels[nodeId]
   const { icon } = statusConfig[status]
 
-  const escalations = data.escalations ?? []
-  const issues = data.issues ?? []
-  const validationIssues = data.validation?.issues_detected ?? []
-  const policyViolations = data.policy_violations ?? []
-  const reasonings = data.reasonings ?? []
+  // Pull stage-specific data
+  const stageKey = nodeToStageId[nodeId]
+  const stageData = stageKey ? (data.stages as Record<string, { issues: typeof data.stages.translation.issues; escalations: typeof data.stages.translation.escalations; reasonings: typeof data.stages.translation.reasonings; policy_violations: typeof data.stages.translation.policy_violations }>)[stageKey] : null
 
-  // Blocking escalations first, then non-blocking
-  const sortedEscalations = [...escalations].sort((a, b) =>
-    (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0)
-  )
-  const sortedIssues = [...issues].sort((a, b) =>
-    (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0)
-  )
-  const criticalValidation = validationIssues.filter(i => i.severity === "critical" || i.severity === "high")
-  const otherValidation = validationIssues.filter(i => i.severity !== "critical" && i.severity !== "high")
+  const escalations = stageData?.escalations ?? []
+  const issues = stageData?.issues ?? []
+  const policyViolations = stageData?.policy_violations ?? []
+  const reasonings = stageData?.reasonings ?? []
+
+  // Blocking first
+  const sortedEscalations = [...escalations].sort((a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0))
+  const sortedIssues = [...issues].sort((a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0))
 
   // Node-specific extra sections
   const showApprovalTier = nodeId === "approval-tier"
-  const showPreferredSupplier = nodeId === "precedence-lookup"
-  const showCategoryRules = nodeId === "apply-cat-rules-1" || nodeId === "apply-cat-rules-2"
   const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "check-eligible-supplier", "pricing-calculation", "scoring-ranking"].includes(nodeId)
   const showRecommendation = nodeId === "final-check" || nodeId === "done"
   const showAuditTrail = nodeId === "done"
 
-  const approvalThreshold = data.policy_evaluation?.approval_threshold
-  const preferredSupplier = data.policy_evaluation?.preferred_supplier
-  const categoryRules = data.policy_evaluation?.category_rules_applied ?? []
+  const approvalTier = data.approval_tier
   const suppliers = data.supplier_shortlist ?? []
   const excluded = data.suppliers_excluded ?? []
   const recommendation = data.recommendation
@@ -299,7 +333,14 @@ function NodeDetailPanel({
                   <div key={issue.issue_id} className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-xs font-medium text-amber-700 dark:text-amber-400">{issue.issue_id}</span>
-                      {issue.blocking && <Badge className="text-[10px] shrink-0 bg-amber-600 hover:bg-amber-600">Blocking</Badge>}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Badge variant="secondary" className={`text-[10px] capitalize ${
+                          issue.severity === "critical" ? "bg-destructive text-destructive-foreground" :
+                          issue.severity === "high" ? "bg-orange-500 text-white" :
+                          issue.severity === "middle" ? "bg-amber-500 text-white" : ""
+                        }`}>{issue.severity}</Badge>
+                        {issue.blocking && <Badge className="text-[10px] bg-amber-600 hover:bg-amber-600">Blocking</Badge>}
+                      </div>
                     </div>
                     {issue.trigger && <p className="text-xs text-muted-foreground mt-1">{issue.trigger}</p>}
                     {issue.escalate_to && (
@@ -315,54 +356,7 @@ function NodeDetailPanel({
 
           <Separator />
 
-          {/* 3. VALIDATION ISSUES */}
-          <div>
-            <SectionHeader
-              icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
-              title="Validation"
-            />
-            {validationIssues.length === 0 ? (
-              <EmptyState label="No validation issues" />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {[...criticalValidation, ...otherValidation].map((v) => {
-                  const isHigh = v.severity === "critical" || v.severity === "high"
-                  return (
-                    <div
-                      key={v.issue_id}
-                      className={`rounded-md border px-3 py-2.5 ${isHigh
-                        ? "border-destructive/30 bg-destructive/5"
-                        : "border-border bg-muted/40"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className={`text-xs font-medium ${isHigh ? "text-destructive" : "text-foreground"}`}>
-                          {v.type}
-                        </span>
-                        <Badge
-                          variant={isHigh ? "destructive" : "secondary"}
-                          className="text-[10px] shrink-0 capitalize"
-                        >
-                          {v.severity}
-                        </Badge>
-                      </div>
-                      {v.description && <p className="text-xs text-muted-foreground mt-1">{v.description}</p>}
-                      {v.action_required && (
-                        <p className="text-xs mt-1">
-                          <span className="font-medium">Action:</span>{" "}
-                          <span className="text-muted-foreground">{v.action_required}</span>
-                        </p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* 4. POLICY VIOLATIONS */}
+          {/* 3. POLICY VIOLATIONS */}
           <div>
             <SectionHeader
               icon={<Ban className="h-4 w-4 text-orange-600 dark:text-orange-400" />}
@@ -384,55 +378,26 @@ function NodeDetailPanel({
 
           <Separator />
 
-          {/* 5. NODE-SPECIFIC SECTIONS */}
+          {/* 4. NODE-SPECIFIC SECTIONS */}
 
-          {showApprovalTier && approvalThreshold?.rule_applied && (
+          {showApprovalTier && approvalTier && (
             <>
               <div>
                 <SectionHeader icon={<Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />} title="Approval Tier" />
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1.5">
-                  <Row label="Rule" value={approvalThreshold.rule_applied} />
-                  <Row label="Basis" value={approvalThreshold.basis} />
-                  <Row label="Quotes Required" value={String(approvalThreshold.quotes_required)} />
-                  {approvalThreshold.approvers?.length > 0 && (
-                    <Row label="Approvers" value={approvalThreshold.approvers.join(", ")} />
+                  <Row label="Tier" value={`Tier ${approvalTier.tier_number} (${approvalTier.threshold_id})`} />
+                  <Row label="Budget" value={`${approvalTier.currency} ${approvalTier.budget_amount?.toLocaleString()}`} />
+                  <Row label="Quotes Required" value={String(approvalTier.min_supplier_quotes)} />
+                  {approvalTier.approvers?.length > 0 && (
+                    <Row label="Approvers" value={approvalTier.approvers.join(", ")} />
                   )}
-                  {approvalThreshold.note && <Row label="Note" value={approvalThreshold.note} />}
+                  {approvalTier.deviation_approval_required_from?.length > 0 && (
+                    <Row label="Deviation Approval" value={approvalTier.deviation_approval_required_from.join(", ")} />
+                  )}
+                  {approvalTier.is_boundary_case && (
+                    <Row label="Boundary Case" value={approvalTier.boundary_value != null ? `Yes (boundary: ${approvalTier.boundary_value.toLocaleString()})` : "Yes"} />
+                  )}
                 </div>
-              </div>
-              <Separator />
-            </>
-          )}
-
-          {showPreferredSupplier && preferredSupplier?.supplier && (
-            <>
-              <div>
-                <SectionHeader icon={<Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />} title="Preferred Supplier" />
-                <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1.5">
-                  <Row label="Supplier" value={preferredSupplier.supplier} />
-                  <Row label="Status" value={preferredSupplier.status} />
-                  <Row label="Is Preferred" value={preferredSupplier.is_preferred ? "Yes" : "No"} />
-                  <Row label="Covers Delivery Country" value={preferredSupplier.covers_delivery_country ? "Yes" : "No"} />
-                  {preferredSupplier.is_restricted && <Row label="Restricted" value="Yes" />}
-                  {preferredSupplier.policy_note && <Row label="Note" value={preferredSupplier.policy_note} />}
-                </div>
-              </div>
-              <Separator />
-            </>
-          )}
-
-          {showCategoryRules && categoryRules.length > 0 && (
-            <>
-              <div>
-                <SectionHeader icon={<Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />} title="Category Rules Applied" />
-                <ul className="space-y-1">
-                  {categoryRules.map((r, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                      <ChevronRight className="h-3 w-3 mt-0.5 shrink-0" />
-                      {r}
-                    </li>
-                  ))}
-                </ul>
               </div>
               <Separator />
             </>
@@ -528,7 +493,7 @@ function NodeDetailPanel({
             </>
           )}
 
-          {/* 6. REASONINGS */}
+          {/* 5. REASONINGS */}
           {reasonings.length > 0 && (
             <>
               <div>
@@ -545,19 +510,6 @@ function NodeDetailPanel({
               <Separator />
             </>
           )}
-
-          {/* 7. LOGGING — placeholder */}
-          <div>
-            <SectionHeader
-              icon={<ScrollText className="h-4 w-4 text-muted-foreground" />}
-              title="Logs"
-            />
-            <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-4 text-center">
-              <ScrollText className="h-5 w-5 text-muted-foreground/50 mx-auto mb-1.5" />
-              <p className="text-xs text-muted-foreground">Logging not yet implemented</p>
-              <p className="text-[11px] text-muted-foreground/60 mt-0.5">Step-level logs will appear here</p>
-            </div>
-          </div>
 
         </div>
       </SheetContent>
@@ -616,13 +568,9 @@ export default function RequestPage() {
     setSelectedNodeId(node.id as NodeId)
   }, [])
 
-  // On init: zoom to fit the widest row (translation … check-available-product, x:50–1070)
-  // while keeping request-submitted visible at the top.
   const onInit = useCallback((instance: ReactFlowInstance) => {
-    instance.fitBounds(
-      { x: 50, y: 0, width: 1020, height: 200 },
-      { padding: 0.06 },
-    )
+    // Center the viewport on the Request Submitted node (x=200, width=240 → centerX=320; y=0, height≈60 → centerY=30)
+    instance.setCenter(320, 30, { zoom: 1 })
   }, [])
 
   return (

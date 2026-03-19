@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState } from "react";
-import { createRequestData, mergeRequestData, type RequestData, type RequestInterpretation } from "@/lib/request-data";
+import { createRequestData, mergeRequestData, type RequestData, type RequestDataPatch, type RequestInterpretation, type StageId } from "@/lib/request-data";
 import { core_agent } from "@/lib/core-agent";
 
 export type PipelineNodeStatus = "outstanding" | "working" | "warning" | "escalation" | "done";
@@ -20,7 +20,7 @@ const INITIAL_STATUSES: NodeStatuses = {
   "translation":               "outstanding",
   "internal-coherence":        "outstanding",
   "missing-required-data":     "outstanding",
-  "check-available-product":   "outstanding",
+  "check-available-products":  "outstanding",
   "inappropriate-requests":    "outstanding",
   "apply-cat-rules-1":         "outstanding",
   "approval-tier":             "outstanding",
@@ -36,18 +36,31 @@ const INITIAL_STATUSES: NodeStatuses = {
   "done":                      "outstanding",
 };
 
+// Maps the node name passed to namedUpdate() → graph node ID in INITIAL_STATUSES
 const NODE_NAME_TO_GRAPH_ID: Record<string, string> = {
-  translate:                "translation",
-  internal_coherence:       "internal-coherence",
-  missing_required_data:    "missing-required-data",
-  check_available_products: "check-available-product",
+  translation:               "translation",
+  internal_coherence:        "internal-coherence",
+  missing_required_data:     "missing-required-data",
+  check_available_products:  "check-available-products",
+  inappropriate_requests:    "inappropriate-requests",
+  apply_category_rules:      "apply-cat-rules-1",
+  precedence_lookup:         "precedence-lookup",
+  approval_tier:             "approval-tier",
+  purely_eligible_suppliers: "purely-eligible-suppliers",
 };
 
-function deriveStatus(nodeName: string, patch: Partial<RequestData>): PipelineNodeStatus {
-  const escalations = patch.escalations ?? [];
-  if (nodeName === "translate") return "done";
-  if (nodeName === "missing_required_data") return escalations.length > 0 ? "warning" : "done";
-  return escalations.length > 0 ? "escalation" : "done";
+function deriveStatus(nodeName: string, patch: RequestDataPatch): PipelineNodeStatus {
+  const stageResult = patch.stages?.[nodeName as StageId];
+  const hasBlocking =
+    stageResult?.escalations?.some((e) => e.blocking) ||
+    stageResult?.issues?.some((i) => i.blocking);
+  const hasWarning =
+    (stageResult?.escalations?.length ?? 0) > 0 ||
+    (stageResult?.issues?.length ?? 0) > 0;
+
+  if (hasBlocking) return "escalation";
+  if (hasWarning)  return "warning";
+  return "done";
 }
 
 const RequestStoreContext = createContext<RequestStore | null>(null);
@@ -61,11 +74,10 @@ export function RequestStoreProvider({ children }: { children: React.ReactNode }
     setRequestData(createRequestData(form));
     setNodeStatuses({
       ...INITIAL_STATUSES,
-      "request-submitted":       "done",
-      "translation":             "working",
-      "internal-coherence":      "working",
-      "missing-required-data":   "working",
-      "check-available-product": "working",
+      "request-submitted":   "done",
+      // Group 1 starts immediately: translate + internalCoherence in parallel
+      "translation":         "working",
+      "internal-coherence":  "working",
     });
     setIsPipelineRunning(true);
 
@@ -73,8 +85,7 @@ export function RequestStoreProvider({ children }: { children: React.ReactNode }
       setRequestData((prev) => mergeRequestData(prev, patch));
       const graphId = NODE_NAME_TO_GRAPH_ID[nodeName];
       if (graphId) {
-        const status = deriveStatus(nodeName, patch);
-        setNodeStatuses((prev) => ({ ...prev, [graphId]: status }));
+        setNodeStatuses((prev) => ({ ...prev, [graphId]: deriveStatus(nodeName, patch) }));
       }
     }).finally(() => setIsPipelineRunning(false));
   }
