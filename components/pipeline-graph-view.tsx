@@ -255,7 +255,7 @@ const nodeToStageId: Partial<Record<NodeId, string>> = {
   "pricing-calculation":         "pricing_calculation",
   "re-evaluate-tier":          "reevaluate_tier_from_quote",
   "scoring-ranking":           "scoring_and_ranking",
-  "final-check":               "scoring_and_ranking",
+  "final-check":               "final_check",
 }
 
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -308,7 +308,7 @@ function NodeDetailPanel({
   const sortedIssues = [...issues].sort((a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0))
 
   const showApprovalTier = nodeId === "approval-tier"
-  const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "geographical-rules", "evaluate-preferred-supplier", "apply-cat-rules-2", "pricing-calculation", "scoring-ranking"].includes(nodeId)
+  const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "geographical-rules", "evaluate-preferred-supplier", "apply-cat-rules-2", "pricing-calculation", "scoring-ranking", "final-check", "done"].includes(nodeId)
   const showRecommendation = nodeId === "final-check" || nodeId === "done"
   const showAuditTrail = nodeId === "done"
 
