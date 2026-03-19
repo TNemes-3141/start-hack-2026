@@ -1,20 +1,54 @@
 export type RequestInterpretation = {
-  request_text?: string;           // populated by translate node
+  // Form fields (match example_request.json)
+  request_language?: string;
+  business_unit?: string;
+  country?: string;
+  city?: string;
+  requester_id?: string;
+  requester_role?: string;
   category_l1?: string;
   category_l2?: string;
+  title?: string;
+  request_text?: string;
+  currency?: string;
+  budget_amount?: number;
   quantity?: number;
   unit_of_measure?: string;
-  budget_amount?: number;
-  currency?: string;
-  delivery_country?: string;
   required_by_date?: string;
+  preferred_supplier_mentioned?: string;
+  incumbent_supplier?: string;
+  contract_type_requested?: string;
+  delivery_countries?: string[];
+  esg_requirement?: boolean;
+  // Pipeline-computed fields
   days_until_required?: number;
   data_residency_required?: boolean;
-  esg_requirement?: boolean;
-  preferred_supplier_stated?: string;
-  incumbent_supplier?: string;
+  data_residency_constraint?: boolean;
   requester_instruction?: string;
-  [key: string]: unknown;          // allow extra fields from arbitrary uploads
+  [key: string]: unknown;
+};
+
+export const FIELD_LABELS: Record<string, string> = {
+  request_language: "Request Language",
+  business_unit: "Business Unit",
+  country: "Country",
+  city: "City",
+  requester_id: "Requester ID",
+  requester_role: "Requester Role",
+  category_l1: "Category (L1)",
+  category_l2: "Category (L2)",
+  title: "Request Title",
+  request_text: "Request Details",
+  currency: "Currency",
+  budget_amount: "Budget Amount",
+  quantity: "Quantity",
+  unit_of_measure: "Unit of Measure",
+  required_by_date: "Required By Date",
+  preferred_supplier_mentioned: "Preferred Supplier Mentioned",
+  incumbent_supplier: "Incumbent Supplier",
+  contract_type_requested: "Contract Type Requested",
+  delivery_countries: "Delivery Countries",
+  esg_requirement: "ESG Requirement",
 };
 
 export type RequestData = {

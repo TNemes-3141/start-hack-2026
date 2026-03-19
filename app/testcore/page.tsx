@@ -3,38 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { createRequestData, mergeRequestData, type RequestData, type RequestInterpretation } from "@/lib/request-data";
-import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall } from "@/lib/api-calls";
-
-async function core_agent(
-  uploadedJson: RequestInterpretation,
-  onUpdate: (patch: Partial<RequestData>) => void,
-) {
-  let currentData = createRequestData(uploadedJson);
-  console.log("[core_agent] starting pipeline with:", currentData.request_interpretation);
-
-  const interp = currentData.request_interpretation;
-
-  function namedUpdate(node: string) {
-    return (patch: Partial<RequestData>) => {
-      console.group(`[${node}] finished`);
-      console.log("patch:", patch);
-      currentData = mergeRequestData(currentData, patch);
-      console.log("request_data after merge:", currentData);
-      console.groupEnd();
-      onUpdate(patch);
-    };
-  }
-
-  // --- Parallel: translate + internal coherence + missing data + product availability ---
-  await Promise.all([
-    translateCall(interp.request_text ?? "").then(namedUpdate("translate")),
-    internalCoherenceCall(interp).then(namedUpdate("internal_coherence")),
-    missingRequiredDataCall(interp).then(namedUpdate("missing_required_data")),
-    checkAvailableProductsCall(interp).then(namedUpdate("check_available_products")),
-  ]);
-
-  // --- Next sequential step goes here ---
-}
+import { core_agent } from "@/lib/core-agent";
 
 export default function TestCorePage() {
   const [fileName, setFileName] = useState<string | null>(null);
@@ -56,7 +25,7 @@ export default function TestCorePage() {
     reader.readAsText(file);
   }
 
-  function handleUpdate(patch: Partial<RequestData>) {
+  function handleUpdate(_node: string, patch: Partial<RequestData>) {
     console.log("[node update] patch received:", patch);
     setRequestData((prev) => {
       const next = mergeRequestData(prev, patch);
