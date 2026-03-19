@@ -128,7 +128,7 @@ const NODE_W  = 280  // StatusNode width (matches style={{ width: NODE_W }})
 const NODE_H  = 44   // Approximate rendered height of a StatusNode
 const BOX_PAD = 16   // Padding on every side between box border and node edges
 
-const gbProps = { type: "group-box", selectable: false, draggable: false, focusable: false } as const
+const gbProps = { type: "group-box", selectable: false, draggable: false, focusable: false, className: "pointer-events-none" } as const
 
 // ── Status-node positions (single source of truth) ────────────────────────────
 
@@ -257,7 +257,7 @@ const nodeToStageId: Partial<Record<NodeId, string>> = {
   "pricing-calculation":         "pricing_calculation",
   "re-evaluate-tier":          "reevaluate_tier_from_quote",
   "scoring-ranking":           "scoring_and_ranking",
-  "final-check":               "scoring_and_ranking",
+  "final-check":               "final_check",
 }
 
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -369,7 +369,7 @@ function NodeDetailPanel({
   const sortedIssues = [...issues].sort((a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0))
 
   const showApprovalTier = nodeId === "approval-tier"
-  const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "geographical-rules", "evaluate-preferred-supplier", "apply-cat-rules-2", "pricing-calculation", "scoring-ranking"].includes(nodeId)
+  const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "geographical-rules", "evaluate-preferred-supplier", "apply-cat-rules-2", "pricing-calculation", "scoring-ranking", "final-check", "done"].includes(nodeId)
   const showRecommendation = nodeId === "final-check" || nodeId === "done"
   const showAuditTrail = nodeId === "done"
 
@@ -603,6 +603,7 @@ export function PipelineGraphView({
   )
 
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
+    if (node.type === "group-box") return
     setSelectedNodeId(node.id as NodeId)
   }, [])
 

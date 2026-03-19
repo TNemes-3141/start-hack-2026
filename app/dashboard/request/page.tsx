@@ -27,6 +27,8 @@ import {
   Info,
   Ban,
   FileText,
+  ThumbsUp,
+  Trophy,
 } from "lucide-react"
 import { useRequestStore, type PipelineNodeStatus } from "@/lib/request-store"
 import type { RequestData } from "@/lib/request-data"
@@ -289,7 +291,7 @@ const nodeToStageId: Partial<Record<NodeId, string>> = {
   "pricing-calculation":         "pricing_calculation",
   "re-evaluate-tier":          "reevaluate_tier_from_quote",
   "scoring-ranking":           "scoring_and_ranking",
-  "final-check":               "scoring_and_ranking",
+  "final-check":               "final_check",
 }
 
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -336,7 +338,7 @@ function NodeDetailPanel({
 
   // Node-specific extra sections
   const showApprovalTier = nodeId === "approval-tier"
-  const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "geographical-rules", "evaluate-preferred-supplier", "apply-cat-rules-2", "pricing-calculation", "scoring-ranking"].includes(nodeId)
+  const showSuppliers = ["purely-eligible-suppliers", "restricted-suppliers", "geographical-rules", "evaluate-preferred-supplier", "apply-cat-rules-2", "pricing-calculation", "scoring-ranking", "final-check", "done"].includes(nodeId)
   const showRecommendation = nodeId === "final-check" || nodeId === "done"
   const showAuditTrail = nodeId === "done"
 
@@ -602,11 +604,12 @@ function Row({ label, value }: { label: string; value: string }) {
 // --- Page ---
 
 export default function RequestPage() {
-  const { nodeStatuses, requestData, isPipelineRunning } = useRequestStore()
+  const { nodeStatuses, requestData, isPipelineRunning, runId, approveAndResume } = useRequestStore()
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   const [selectedNodeId, setSelectedNodeId] = useState<NodeId | null>(null)
+  const [isApproving, setIsApproving] = useState(false)
   // Keep the last non-null nodeId so the panel content doesn't blank mid-close-animation
   const lastNodeId = useRef<NodeId | null>(null)
   if (selectedNodeId) lastNodeId.current = selectedNodeId
@@ -659,15 +662,60 @@ export default function RequestPage() {
     instance.fitView({ nodes: [{ id: "request-submitted" }], padding: 3, maxZoom: 1, duration: 0 })
   }, [])
 
+  const isBlocked = !isPipelineRunning && Object.values(requestData.stages).some(
+    (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
+  )
+  const isPipelineDone = nodeStatuses["done"] === "done"
+
+  const firstBlockingEscalation = Object.values(requestData.stages)
+    .flatMap((s) => s.escalations ?? [])
+    .find((e) => e.blocking)
+  const firstBlockingIssue = Object.values(requestData.stages)
+    .flatMap((s) => s.issues ?? [])
+    .find((i) => i.blocking)
+  const blockingTrigger = firstBlockingEscalation?.trigger ?? firstBlockingIssue?.trigger ?? "A blocking issue requires human approval before the pipeline can continue."
+  const escalateTo = firstBlockingEscalation?.escalate_to ?? firstBlockingIssue?.escalate_to
+
+  async function handleApprove() {
+    if (!runId) return
+    setIsApproving(true)
+    try { await approveAndResume(runId, requestData, "Procurement Manager") }
+    finally { setIsApproving(false) }
+  }
+
   return (
-    <div className="flex flex-col gap-4 h-[calc(100vh-3.5rem-3rem)]">
+    <div className="flex flex-col gap-4 h-[calc(100vh-3.5rem-3rem)] overflow-y-auto">
       {isPipelineRunning && (
-        <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">
+        <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300 shrink-0">
           <Loader2 className="h-4 w-4 animate-spin" />
           Pipeline is running…
         </div>
       )}
-      <div className="flex-1 rounded-lg border border-border bg-background">
+      {isBlocked && (
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 shrink-0">
+          <div className="flex items-start gap-3 min-w-0">
+            <ShieldAlert className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-destructive">Pipeline blocked — approval required</p>
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{blockingTrigger}</p>
+              {escalateTo && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="font-medium">Escalate to:</span> {escalateTo}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={handleApprove}
+            disabled={isApproving}
+            className="shrink-0 flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <ThumbsUp className="h-3.5 w-3.5" />
+            {isApproving ? "Approving…" : "Approve & Resume"}
+          </button>
+        </div>
+      )}
+      <div className="rounded-lg border border-border bg-background" style={{ height: "calc(100vh - 3.5rem - 3rem - 2rem)" }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -687,6 +735,15 @@ export default function RequestPage() {
         </ReactFlow>
       </div>
 
+      {isPipelineDone && requestData.supplier_shortlist.length > 0 && (
+        <ShortlistResults
+          shortlist={requestData.supplier_shortlist}
+          recommendation={requestData.recommendation}
+          excluded={requestData.suppliers_excluded}
+          currency={requestData.request_interpretation.currency ?? ""}
+        />
+      )}
+
       <NodeDetailPanel
         nodeId={lastNodeId.current ?? "request-submitted"}
         status={nodeStatuses[lastNodeId.current ?? "request-submitted"] ?? "outstanding"}
@@ -694,6 +751,161 @@ export default function RequestPage() {
         open={!!selectedNodeId}
         onClose={() => setSelectedNodeId(null)}
       />
+    </div>
+  )
+}
+
+// ── Shortlist Results ─────────────────────────────────────────────────────────
+
+type ShortlistResultsProps = {
+  shortlist: import("@/lib/request-data").ShortlistEntry[]
+  recommendation: import("@/lib/request-data").RequestData["recommendation"]
+  excluded: { supplier_id: string; supplier_name: string; reason: string }[]
+  currency: string
+}
+
+function ShortlistResults({ shortlist, recommendation, excluded, currency }: ShortlistResultsProps) {
+  const winner = shortlist[0]
+  const statusColor =
+    recommendation.status === "recommend_award"
+      ? "border-emerald-500/40 bg-emerald-500/5"
+      : recommendation.status === "escalated"
+      ? "border-destructive/40 bg-destructive/5"
+      : "border-amber-500/40 bg-amber-500/5"
+
+  return (
+    <div className="flex flex-col gap-4 shrink-0">
+      {/* Header */}
+      <div className={`rounded-lg border px-4 py-3 ${statusColor}`}>
+        <div className="flex items-start gap-3">
+          <Trophy className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">
+              {recommendation.status === "recommend_award"
+                ? `Recommended: ${recommendation.preferred_supplier_if_resolved}`
+                : recommendation.status === "escalated"
+                ? "Escalated — manual review required"
+                : "No compliant supplier found"}
+            </p>
+            {recommendation.reason && (
+              <p className="text-xs text-muted-foreground mt-0.5">{recommendation.reason}</p>
+            )}
+            {recommendation.preferred_supplier_rationale && (
+              <p className="text-xs text-muted-foreground mt-0.5 italic">{recommendation.preferred_supplier_rationale}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Ranked supplier table */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <p className="text-sm font-semibold text-foreground">Supplier Shortlist — {shortlist.length} Evaluated</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/40">
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground w-8">Rank</th>
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Supplier</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Total Price</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Unit Price</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Lead Time</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Quality</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Risk</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">ESG</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Score</th>
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shortlist.map((s) => {
+                const isWinner = s.rank === 1
+                return (
+                  <tr
+                    key={s.supplier_id}
+                    className={`border-b border-border last:border-0 ${isWinner ? "bg-emerald-500/5" : "hover:bg-muted/20"}`}
+                  >
+                    <td className="px-3 py-2.5 text-center">
+                      {isWinner
+                        ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold">1</span>
+                        : <span className="text-muted-foreground">#{s.rank}</span>
+                      }
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={`font-medium ${isWinner ? "text-emerald-700 dark:text-emerald-400" : "text-foreground"}`}>
+                        {s.supplier_name}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">
+                      {currency} {s.total_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                      {s.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                      {s.scoring_breakdown.lead_time_status === "expedited_only"
+                        ? <span className="text-amber-600">{s.expedited_lead_time_days}d exp</span>
+                        : s.scoring_breakdown.lead_time_status === "cannot_meet"
+                        ? <span className="text-destructive">{s.standard_lead_time_days}d ⚠</span>
+                        : `${s.standard_lead_time_days}d`}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{s.quality_score ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{s.risk_score ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{s.esg_score ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-semibold">
+                      {s.ranking_score.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {s.preferred_supplier && (
+                          <span className="inline-flex items-center rounded px-1 py-0.5 text-[10px] bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">Preferred</span>
+                        )}
+                        {s.is_requester_preferred && (
+                          <span className="inline-flex items-center rounded px-1 py-0.5 text-[10px] bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">Requested</span>
+                        )}
+                        {s.is_incumbent && (
+                          <span className="inline-flex items-center rounded px-1 py-0.5 text-[10px] bg-muted text-muted-foreground">Incumbent</span>
+                        )}
+                        {!s.policy_compliant && (
+                          <span className="inline-flex items-center rounded px-1 py-0.5 text-[10px] bg-destructive/10 text-destructive">Non-compliant</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Excluded suppliers */}
+      {excluded.length > 0 && (
+        <div className="rounded-lg border border-border bg-card px-4 py-3">
+          <p className="text-xs font-semibold text-muted-foreground mb-2">Excluded Suppliers ({excluded.length})</p>
+          <div className="flex flex-col gap-1.5">
+            {excluded.map((s) => (
+              <div key={s.supplier_id} className="flex items-start gap-2 text-xs">
+                <span className="font-medium text-foreground shrink-0">{s.supplier_name}</span>
+                <span className="text-muted-foreground">— {s.reason}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Scoring weights note */}
+      {winner?.scoring_breakdown && (
+        <p className="text-xs text-muted-foreground px-1">
+          Scoring weights — Price: {(winner.scoring_breakdown.weights.price).toFixed(0)}%,
+          Quality: {(winner.scoring_breakdown.weights.quality).toFixed(0)}%,
+          Risk: {(winner.scoring_breakdown.weights.risk).toFixed(0)}%,
+          ESG: {(winner.scoring_breakdown.weights.esg).toFixed(0)}%.
+          Bonuses: policy-preferred +5, incumbent +2, data-residency +3.
+          Penalties: expedited-only −3, cannot-meet −8.
+        </p>
+      )}
     </div>
   )
 }
