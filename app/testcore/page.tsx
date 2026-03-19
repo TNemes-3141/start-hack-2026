@@ -58,6 +58,23 @@ export default function TestCorePage() {
       >
         Run core_agent
       </Button>
+      <Button 
+        onClick={async () => {
+          const res = await fetch("api/generate_text_summary_for_client", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({prefferd: "we wanna buy from beliani its awesome"}),
+          });
+          if (!res.ok) {
+            console.error(`[fetchApi] ${"api/generate_text_summary_for_client"} returned ${res.status}`);
+          }
+          try {
+            return await res.json();
+          } catch {
+            console.error(`[fetchApi] ${"api/generate_text_summary_for_client"} returned non-JSON body`);
+          }
+        }}>TEST PDF
+      </Button>
     </div>
   );
 }
