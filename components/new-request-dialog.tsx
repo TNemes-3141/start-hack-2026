@@ -163,10 +163,10 @@ export function NewRequestDialog({ trigger }: { trigger?: React.ReactNode } = {}
     }
   }
 
-  function handleSubmit() {
-    startPipeline(form as RequestInterpretation)
+  async function handleSubmit() {
     handleOpenChange(false)
-    router.push("/dashboard/request")
+    const id = await startPipeline(form as RequestInterpretation)
+    router.push(`/dashboard/open-requests?run=${id}`)
   }
 
   const categoryL2Options = useMemo(
