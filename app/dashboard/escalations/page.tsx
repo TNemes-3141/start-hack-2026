@@ -1,19 +1,10 @@
-import { RunsListPage } from "@/components/runs-list-page";
-import { RequestData } from "@/lib/request-data";
+import { RunsListPage } from "@/components/runs-list-page"
 
-function EscalationInformationCard({
-  requestData,
-}: {
-  requestData: RequestData;
-}) {
-  return 
-}
-
-// All non-procurement roles see every request that has any escalation.
+// Shows all requests that have any blocking escalation, regardless of status.
 export default function EscalationsPage() {
   return (
     <div>
       <RunsListPage escalateTo={[]} />
     </div>
-  );
+  )
 }

@@ -1,72 +1,48 @@
-"use client";
+"use client"
 
-import { useEffect, useRef } from "react";
-import Dither from '@/components/Dither';
-import Dot from "@/components/animata/background/dot";
-import AbstractShape from "@/components/animata/abstract-shape";
+import { useEffect, useRef } from "react"
+import { PageBackground } from "@/components/page-background"
+import AbstractShape from "@/components/animata/abstract-shape"
 import image0 from "@/public/images/image0.png"
 import image1 from "@/public/images/image1.png"
 import image2 from "@/public/images/image2.png"
-import Image from "next/image";
-import Link from "next/link";
+import Image from "next/image"
+import Link from "next/link"
+
+const carouselImages = [
+  { src: image1, alt: "Dashboard preview 1" },
+  { src: image2, alt: "Dashboard preview 2" },
+  { src: image0, alt: "Dashboard preview 3" },
+]
 
 export default function LandingPage() {
-  const carouselTrackRef = useRef<HTMLDivElement>(null);
+  const carouselTrackRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    let rafId = 0;
-    let lastTs = performance.now();
-    let offset = 0;
+    let rafId = 0
+    let lastTs = performance.now()
+    let offset = 0
 
     const animate = (ts: number) => {
-      const track = carouselTrackRef.current;
-      if (!track) {
-        rafId = requestAnimationFrame(animate);
-        return;
-      }
+      const track = carouselTrackRef.current
+      if (!track) { rafId = requestAnimationFrame(animate); return }
 
-      const singleLoopWidth = track.scrollWidth / 2;
+      const singleLoopWidth = track.scrollWidth / 2
       if (singleLoopWidth > 0) {
-        const delta = ts - lastTs;
-        const speedPxPerSecond = 36;
-        offset = (offset + (delta * speedPxPerSecond) / 1000) % singleLoopWidth;
-
-        // Move left continuously; duplicate content makes this seamless.
-        track.style.transform = `translate3d(${-offset}px, 0, 0)`;
+        offset = (offset + ((ts - lastTs) * 36) / 1000) % singleLoopWidth
+        track.style.transform = `translate3d(${-offset}px, 0, 0)`
       }
-      lastTs = ts;
-      rafId = requestAnimationFrame(animate);
-    };
+      lastTs = ts
+      rafId = requestAnimationFrame(animate)
+    }
 
-    rafId = requestAnimationFrame(animate);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-    };
-  }, []);
-
-  const carouselImages = [
-    { src: image1, alt: "Dashboard preview 1" },
-    { src: image2, alt: "Dashboard preview 2" },
-    { src: image0, alt: "Dashboard preview 3" },
-  ];
+    rafId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(rafId)
+  }, [])
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 z-0">
-        <Dot className="absolute top-0 inset-0 opacity-15" spacing={30} />
-        <Dither
-          waveColor={[0.5, 0.5, 0.5]}
-          disableAnimation={false}
-          enableMouseInteraction
-          mouseRadius={0.3}
-          colorNum={4}
-          waveAmplitude={0.3}
-          waveFrequency={3}
-          waveSpeed={0.05}
-          className="absolute top-0 inset-0 opacity-15"
-        />
-      </div>
+      <PageBackground />
 
       <main className="relative z-10 mx-auto grid min-h-screen w-full grid-cols-1 items-center p-8 text-center lg:grid-cols-12 lg:grid-rows-12">
         <h1 className="w-full max-w-4xl text-left text-[9vw] text font-medium leading-none lg:col-start-1 lg:col-span-8 lg:row-start-1 lg:row-span-5 lg:self-start">
@@ -97,12 +73,12 @@ export default function LandingPage() {
                 alt={image.alt}
                 width={2984}
                 height={1836}
-                className="h-[300px] w-auto shrink-0 rounded-lg object-contain transition-transform duration-300 ease-out hover:z-10 hover:scale-101"
+                className="h-75 w-auto shrink-0 rounded-lg object-contain transition-transform duration-300 ease-out hover:z-10 hover:scale-101"
               />
             ))}
           </div>
         </div>
       </main>
     </div>
-  );
+  )
 }
