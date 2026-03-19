@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Check, ChevronDown, Plus, SendHorizontal } from "lucide-react"
+import { Check, ChevronDown, Plus, SendHorizontal, Upload } from "lucide-react"
 import {
   Dialog,
   DialogClose,
@@ -115,6 +115,7 @@ export function NewRequestDialog({ trigger }: { trigger?: React.ReactNode } = {}
   const [parseError, setParseError] = useState("")
   const [form, setForm] = useState<ClientRequestForm>(EMPTY_FORM)
   const [formOptions, setFormOptions] = useState<FormOptions>(EMPTY_OPTIONS)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     async function loadOptions() {
@@ -141,16 +142,15 @@ export function NewRequestDialog({ trigger }: { trigger?: React.ReactNode } = {}
     }
   }
 
-  async function handleParse(e: React.FormEvent) {
-    e.preventDefault()
-    if (!prompt.trim() || isParsing) return
+  async function parseText(text: string) {
+    if (!text.trim() || isParsing) return
     setParseError("")
     setIsParsing(true)
     try {
       const res = await fetch("/api/client/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt: text }),
       })
       const payload = (await res.json()) as { error?: string; data?: ClientRequestForm }
       if (!res.ok || !payload.data) throw new Error(payload.error ?? "Unable to parse request.")
@@ -161,6 +161,20 @@ export function NewRequestDialog({ trigger }: { trigger?: React.ReactNode } = {}
     } finally {
       setIsParsing(false)
     }
+  }
+
+  async function handleParse(e: React.FormEvent) {
+    e.preventDefault()
+    await parseText(prompt)
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const text = await file.text()
+    setPrompt(text)
+    await parseText(text)
+    e.target.value = ""
   }
 
   async function handleSubmit() {
@@ -219,6 +233,22 @@ export function NewRequestDialog({ trigger }: { trigger?: React.ReactNode } = {}
             />
             {parseError && <p className="text-sm text-destructive">{parseError}</p>}
             <DialogFooter>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <button
+                type="button"
+                disabled={isParsing}
+                onClick={() => fileInputRef.current?.click()}
+                className="mr-auto inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+              >
+                <Upload className="size-4" />
+                Upload JSON
+              </button>
               <DialogClose asChild>
                 <button type="button" className="rounded-lg px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
                   Cancel
