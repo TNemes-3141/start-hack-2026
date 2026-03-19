@@ -167,16 +167,6 @@ export default function ClientPage() {
 
   const hasMissingInfo = missingFields.length > 0;
 
-  useEffect(() => {
-    const root = document.documentElement;
-    const stored = window.localStorage.getItem("theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const shouldUseDark =
-      stored === "dark" || (!stored && (root.classList.contains("dark") || prefersDark));
-
-    root.classList.toggle("dark", shouldUseDark);
-    setIsDark(shouldUseDark);
-  }, []);
 
   useEffect(() => {
     async function loadOptions() {
