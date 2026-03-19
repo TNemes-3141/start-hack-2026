@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { AlertTriangle, FolderOpen, FolderCheck, Building2 } from "lucide-react"
+import { AlertTriangle, FolderOpen, FolderCheck, Building2, Plus } from "lucide-react"
 import {
   SidebarProvider,
   Sidebar,
@@ -14,6 +14,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarFooter,
   SidebarInset,
   SidebarTrigger,
   useSidebar,
@@ -21,6 +22,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { RequestStoreProvider } from "@/lib/request-store"
 
 
 const navItems = [
@@ -70,6 +72,19 @@ function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <SidebarFooter className="p-3">
+        <SidebarMenuButton
+          asChild
+          tooltip="New Request"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+        >
+          <Link href="/dashboard/new-request">
+            <Plus className="h-4 w-4" />
+            <span>New Request</span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarFooter>
     </Sidebar>
   )
 }
@@ -104,16 +119,18 @@ export function DashboardShell({
   children: React.ReactNode
 }) {
   return (
-    <TooltipProvider>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <AppHeader roleLabel={roleLabel} />
-          <main className="flex-1 overflow-auto p-6">
-            {children}
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
-    </TooltipProvider>
+    <RequestStoreProvider>
+      <TooltipProvider>
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset>
+            <AppHeader roleLabel={roleLabel} />
+            <main className="flex-1 overflow-auto p-6">
+              {children}
+            </main>
+          </SidebarInset>
+        </SidebarProvider>
+      </TooltipProvider>
+    </RequestStoreProvider>
   )
 }
