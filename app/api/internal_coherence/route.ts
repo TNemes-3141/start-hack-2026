@@ -36,7 +36,8 @@ If at least one field has status "failed", add a single blocking issue to the "i
   "issue_id": "ISS-001",
   "trigger": "<comma-separated list of failed field names>",
   "escalate_to": "Procurement",
-  "blocking": true
+  "blocking": true,
+  "severity": "high"
 }
 
 Return only valid JSON. No explanation or text outside the JSON object.`;

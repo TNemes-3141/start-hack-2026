@@ -1,10 +1,13 @@
 // ── Shared sub-types ──────────────────────────────────────────────────────────
 
+export type IssueSeverity = "low" | "middle" | "high" | "critical";
+
 export type Issue = {
   issue_id: string;
   trigger: string;
   escalate_to: string;
   blocking: boolean;
+  severity: IssueSeverity;
 };
 
 export type Escalation = {
@@ -108,6 +111,40 @@ export const FIELD_LABELS: Record<string, string> = {
   esg_requirement: "ESG Requirement",
 };
 
+// ── Historical Precedents ─────────────────────────────────────────────────────
+
+export type HistoricalAward = {
+  award_id: string;
+  request_id: string | null;
+  award_date: string | null;
+  category_l1: string | null;
+  category_l2: string | null;
+  country: string | null;
+  business_unit: string | null;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  total_value: number | null;
+  currency: string | null;
+  quantity: number | null;
+  required_by_date: string | null;
+  awarded: boolean | null;
+  award_rank: number | null;
+  decision_rationale: string | null;
+  policy_compliant: boolean | null;
+  preferred_supplier_used: boolean | null;
+  escalation_required: boolean | null;
+  escalated_to: string | null;
+  savings_pct: number | null;
+  lead_time_days: number | null;
+  risk_score_at_award: number | null;
+  notes: string | null;
+};
+
+export type HistoricalPrecedent = {
+  request_id: string;
+  awards: HistoricalAward[];
+};
+
 // ── RequestData ───────────────────────────────────────────────────────────────
 
 export type RequestData = {
@@ -123,6 +160,7 @@ export type RequestData = {
     quality_score: number; risk_score: number; esg_score: number;
     policy_compliant: boolean; covers_delivery_country: boolean; recommendation_note: string;
   }[];
+  historical_precedents: HistoricalPrecedent[];
   suppliers_excluded: { supplier_id: string; supplier_name: string; reason: string }[];
   recommendation: { status: string; reason: string; preferred_supplier_if_resolved: string; preferred_supplier_rationale: string; minimum_budget_required: number; minimum_budget_currency: string };
   audit_trail: { policies_checked: string[]; supplier_ids_evaluated: string[]; pricing_tiers_applied: string; data_sources_used: string[]; historical_awards_consulted: boolean; historical_award_note: string };
@@ -164,6 +202,7 @@ export function createRequestData(requestInterpretation: RequestInterpretation =
     processed_at: "",
     request_interpretation: requestInterpretation,
     stages: emptyStages(),
+    historical_precedents: [],
     supplier_shortlist: [],
     suppliers_excluded: [],
     recommendation: { status: "", reason: "", preferred_supplier_if_resolved: "", preferred_supplier_rationale: "", minimum_budget_required: 0, minimum_budget_currency: "" },

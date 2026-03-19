@@ -1,5 +1,5 @@
 import { createRequestData, mergeRequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
-import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall } from "@/lib/api-calls";
+import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall } from "@/lib/api-calls";
 
 export async function core_agent(
   uploadedJson: RequestInterpretation,
@@ -17,13 +17,17 @@ export async function core_agent(
     };
   }
 
-  // --- Parallel: translate + internal coherence + missing data + product availability ---
+  // --- Parallel: translate + internal coherence + missing data + product availability + inappropriate check + precedence ---
   await Promise.all([
     translateCall(interp.request_text ?? "").then(namedUpdate("translation")),
     internalCoherenceCall(interp).then(namedUpdate("internal_coherence")),
     missingRequiredDataCall(interp).then(namedUpdate("missing_required_data")),
     checkAvailableProductsCall(interp).then(namedUpdate("check_available_products")),
+    inappropriateRequestsCall(interp).then(namedUpdate("inappropriate_requests")),
+    precedenceLookupCall(interp).then(namedUpdate("precedence_lookup")),
   ]);
 
   // --- Next sequential step goes here ---
+
+  console.log("[core_agent] final RequestData:", JSON.stringify(currentData, null, 2));
 }

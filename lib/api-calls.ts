@@ -1,4 +1,4 @@
-import type { NodeResult, RequestDataPatch, RequestInterpretation, StageId } from "./request-data";
+import type { HistoricalPrecedent, NodeResult, RequestDataPatch, RequestInterpretation, StageId } from "./request-data";
 
 // ── Generic fetch ─────────────────────────────────────────────────────────────
 
@@ -49,9 +49,18 @@ export async function translateCall(input: string): Promise<RequestDataPatch> {
   };
 }
 
-export const internalCoherenceCall     = (input: unknown) => fetchApi("/api/internal_coherence",     input).then(r => wrapStage("internal_coherence",     r));
-export const missingRequiredDataCall   = (input: unknown) => fetchApi("/api/missing_required_data",   input).then(r => wrapStage("missing_required_data",   r));
+export const internalCoherenceCall      = (input: unknown) => fetchApi("/api/internal_coherence",      input).then(r => wrapStage("internal_coherence",      r));
+export const missingRequiredDataCall    = (input: unknown) => fetchApi("/api/missing_required_data",    input).then(r => wrapStage("missing_required_data",    r));
 export const checkAvailableProductsCall = (input: unknown) => fetchApi("/api/check_available_products", input).then(r => wrapStage("check_available_products", r));
+export const inappropriateRequestsCall  = (input: unknown) => fetchApi("/api/inappropriate_requests",   input).then(r => wrapStage("inappropriate_requests",   r));
+
+export async function precedenceLookupCall(input: unknown): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/precedence_lookup", input) as NodeResult & { historical_precedents?: HistoricalPrecedent[] };
+  return {
+    ...(raw.historical_precedents ? { historical_precedents: raw.historical_precedents } : {}),
+    ...wrapStage("precedence_lookup", raw),
+  };
+}
 
 // Stubs for upcoming nodes — wire up endpoints as they are built
 // export const inappropriateRequestsCall   = (input: unknown) => fetchApi("/api/inappropriate_requests",   input).then(r => wrapStage("inappropriate_requests",   r));
