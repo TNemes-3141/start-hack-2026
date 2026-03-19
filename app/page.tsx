@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Dither from '@/components/Dither';
 import Dot from "@/components/animata/background/dot";
 import AbstractShape from "@/components/animata/abstract-shape";
@@ -12,7 +12,6 @@ import Link from "next/link";
 
 export default function LandingPage() {
   const carouselTrackRef = useRef<HTMLDivElement>(null);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
     let rafId = 0;
@@ -45,28 +44,6 @@ export default function LandingPage() {
       cancelAnimationFrame(rafId);
     };
   }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const storedTheme = window.localStorage.getItem("theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initialTheme =
-      storedTheme === "light" || storedTheme === "dark"
-        ? storedTheme
-        : prefersDark
-          ? "dark"
-          : "light";
-
-    root.classList.toggle("dark", initialTheme === "dark");
-    setTheme(initialTheme);
-  }, []);
-
-  const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
-    document.documentElement.classList.toggle("dark", nextTheme === "dark");
-    window.localStorage.setItem("theme", nextTheme);
-    setTheme(nextTheme);
-  };
 
   const carouselImages = [
     { src: image1, alt: "Dashboard preview 1" },
@@ -103,13 +80,6 @@ export default function LandingPage() {
         <nav className="text-xl flex justify-between lg:col-start-9 lg:col-span-4 lg:row-start-1 lg:row-span-1 pr-14 z-10">
           <Link href="/procurement" className="underline underline-offset-5">Dashboard</Link>
           <Link href="/client" className="underline underline-offset-5">Client</Link>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="underline underline-offset-5 cursor-pointer"
-          >
-            {theme === "dark" ? "Light mode" : "Dark mode"}
-          </button>
         </nav>
         <div className="h-full w-full justify-self-center lg:col-start-1 lg:col-span-12 lg:row-start-1 lg:row-span-12">
           <AbstractShape />

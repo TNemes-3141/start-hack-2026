@@ -51,17 +51,17 @@ function ElapsedTimer({ startedAt }: { startedAt: number }) {
     ? `${hours}h ${String(minutes).padStart(2, "0")}m`
     : `${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`
 
-  return <span className="text-xs tabular-nums text-gray-400">{display}</span>
+  return <span className="text-xs tabular-nums text-muted-foreground">{display}</span>
 }
 
 // --- Status node ---
 
 const statusConfig: Record<Status, { icon: React.ReactNode; border: string }> = {
-  outstanding: { icon: <Clock         className="h-4 w-4 text-gray-400" />,            border: "border-gray-300" },
-  working:    { icon: <Loader2       className="h-4 w-4 text-blue-500 animate-spin" />, border: "border-blue-400" },
-  warning:    { icon: <AlertTriangle className="h-4 w-4 text-amber-500" />,           border: "border-amber-400" },
-  escalation: { icon: <XCircle       className="h-4 w-4 text-red-500" />,             border: "border-red-500" },
-  done:       { icon: <CheckCircle2  className="h-4 w-4 text-green-500" />,           border: "border-green-500" },
+  outstanding: { icon: <Clock className="h-4 w-4 text-muted-foreground" />, border: "border-border" },
+  working: { icon: <Loader2 className="h-4 w-4 animate-spin text-sky-600 dark:text-sky-400" />, border: "border-sky-600/60 dark:border-sky-400/60" },
+  warning: { icon: <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />, border: "border-amber-600/60 dark:border-amber-400/60" },
+  escalation: { icon: <XCircle className="h-4 w-4 text-destructive" />, border: "border-destructive/70" },
+  done: { icon: <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />, border: "border-emerald-600/60 dark:border-emerald-400/60" },
 }
 
 function StatusNode({ data }: NodeProps) {
@@ -71,10 +71,10 @@ function StatusNode({ data }: NodeProps) {
 
   return (
     <div
-      className={`rounded-md border-2 bg-white px-3 py-2 shadow-sm ${border}`}
+      className={`rounded-md border-2 bg-card px-3 py-2 text-card-foreground shadow-sm ${border}`}
       style={{ minWidth: 180, width: "max-content" }}
     >
-      <Handle type="target" position={Position.Top}    className="!bg-gray-400" />
+      <Handle type="target" position={Position.Top} className="bg-border! border-border!" />
       <div className="flex items-center justify-between gap-3">
         <span className="whitespace-nowrap text-sm font-medium">{data.label as string}</span>
         {icon}
@@ -84,7 +84,7 @@ function StatusNode({ data }: NodeProps) {
           <ElapsedTimer startedAt={idleSince} />
         </div>
       )}
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-400" />
+      <Handle type="source" position={Position.Bottom} className="bg-border! border-border!" />
     </div>
   )
 }
@@ -220,7 +220,7 @@ export default function RequestPage() {
   }, [statuses])
 
   return (
-    <div className="h-[calc(100vh-3.5rem-3rem)]">
+    <div className="h-[calc(100vh-3.5rem-3rem)] rounded-lg border border-border bg-background">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -231,8 +231,16 @@ export default function RequestPage() {
         elementsSelectable={false}
         fitView
       >
-        <Background />
-        <Controls showInteractive={false} />
+        <Background color="var(--border)" gap={24} />
+        <Controls
+          showInteractive={false}
+          style={{
+            backgroundColor: "var(--card)",
+            border: "1px solid var(--border)",
+            color: "var(--card-foreground)",
+            borderRadius: "var(--radius)",
+          }}
+        />
       </ReactFlow>
     </div>
   )

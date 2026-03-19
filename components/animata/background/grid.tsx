@@ -19,7 +19,7 @@ interface GridProps {
   style?: React.CSSProperties;
 }
 
-function Placeholder({ size = 20 }: Pick<GridProps, "size">) {
+function Placeholder({ size = 20 }: Pick<GridProps, "size">) {  
   const widthSpread = 20;
   const heightSpread = 10;
   return (

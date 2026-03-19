@@ -9,6 +9,7 @@ import {
   SidebarHeader,
   SidebarContent,
   SidebarGroup,
+  SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
@@ -48,22 +49,25 @@ function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Requests</SidebarGroupLabel>
-          <SidebarMenu>
-            {navItems.map(({ label, href, icon: Icon }) => (
-              <SidebarMenuItem key={href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname.startsWith(href)}
-                  tooltip={label}
-                >
-                  <Link href={href}>
-                    <Icon className="h-4 w-4" />
-                    <span>{label}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {navItems.map(({ label, href, icon: Icon }) => (
+                <SidebarMenuItem key={href}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname.startsWith(href)}
+                    tooltip={label}
+                    className="bg-sidebar text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar data-[active=true]:text-sidebar-foreground"
+                  >
+                    <Link href={href}>
+                      <Icon className="h-4 w-4" />
+                      <span>{label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>

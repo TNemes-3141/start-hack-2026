@@ -271,7 +271,7 @@ export default function ClientPage() {
       </div>
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-10">
-        <header className="flex items-center justify-end gap-4">
+        {/* <header className="flex items-center justify-end gap-4">
           <button
             type="button"
             onClick={handleThemeToggle}
@@ -279,7 +279,7 @@ export default function ClientPage() {
           >
             {isDark ? "Dark Mode" : "Light Mode"}
           </button>
-        </header>
+        </header> */}
 
         {showPromptCard ? (
           <div className="flex flex-1 items-center justify-center">
