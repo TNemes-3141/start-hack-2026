@@ -1,5 +1,5 @@
 import { createRequestData, mergeRequestData, type RequestData, type RequestDataPatch, type RequestInterpretation } from "@/lib/request-data";
-import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall, approvalTierCall, purelyEligibleSuppliersCall, restrictedSuppliersCall, geographicalRulesCall, evaluatePreferredSupplierCall, applyDynamicCategoryRulesCall, pricingCalculationCall, reevaluateTierCall, scoringAndRankingCall, finalCheckCall } from "@/lib/api-calls";
+import { translateCall, internalCoherenceCall, missingRequiredDataCall, checkAvailableProductsCall, inappropriateRequestsCall, precedenceLookupCall, applyStaticCategoryRulesCall, approvalTierCall, purelyEligibleSuppliersCall, restrictedSuppliersCall, geographicalRulesCall, evaluatePreferredSupplierCall, applyDynamicCategoryRulesCall } from "@/lib/api-calls";
 
 function hasBlocking(data: RequestData): boolean {
   return Object.values(data.stages).some(
@@ -63,6 +63,25 @@ export async function core_agent(
 
   // ── purelyEligibleSuppliers ───────────────────────────────────────────────
   await purelyEligibleSuppliersCall(currentData.request_interpretation).then(namedUpdate("purely_eligible_suppliers"));
+  if (hasBlocking(currentData)) { abort("purely_eligible_suppliers"); return currentData; }
+
+  // ── Group 3 (parallel) ────────────────────────────────────────────────────
+  // Branch A: restrictedSuppliers → geographicalRules (sequential, both mutate eligible_suppliers)
+  // Branch B: evaluatePreferredSupplier (independent — only produces reasoning/issues)
+  await Promise.all([
+    (async () => {
+      await restrictedSuppliersCall(currentData).then(namedUpdate("restricted_suppliers"));
+      if (hasBlocking(currentData)) return;
+      await geographicalRulesCall(currentData).then(namedUpdate("geographical_rules"));
+    })(),
+    evaluatePreferredSupplierCall(currentData).then(namedUpdate("evaluate_preferred_supplier")),
+  ]);
+
+  if (hasBlocking(currentData)) { abort("group 3"); return currentData; }
+
+  // ── applyDynamicCategoryRules ─────────────────────────────────────────────
+  await applyDynamicCategoryRulesCall(currentData).then(namedUpdate("apply_dynamic_category_rules"));
+  if (hasBlocking(currentData)) { abort("apply_dynamic_category_rules"); return currentData; }
 
   console.log("[core_agent] final RequestData:", JSON.stringify(currentData, null, 2));
   return currentData;

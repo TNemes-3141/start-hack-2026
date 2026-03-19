@@ -79,10 +79,38 @@ export async function precedenceLookupCall(input: unknown): Promise<RequestDataP
   };
 }
 
-export const restrictedSuppliersCall        = (input: unknown) => fetchApi("/api/restricted_suppliers",         input).then(r => wrapStage("restricted_suppliers",         r));
-export const geographicalRulesCall          = (input: unknown) => fetchApi("/api/geographical_rules",           input).then(r => wrapStage("geographical_rules",           r));
+export async function restrictedSuppliersCall(input: RequestData): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/restricted_suppliers", input) as NodeResult & {
+    eligible_suppliers?: EligibleSupplier[];
+    suppliers_excluded?: { supplier_id: string; supplier_name: string; reason: string }[];
+  };
+  return {
+    ...(raw.eligible_suppliers !== undefined ? { eligible_suppliers: raw.eligible_suppliers } : {}),
+    ...(raw.suppliers_excluded?.length ? { suppliers_excluded: raw.suppliers_excluded } : {}),
+    ...wrapStage("restricted_suppliers", raw),
+  };
+}
+export async function geographicalRulesCall(input: RequestData): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/geographical_rules", input) as NodeResult & {
+    eligible_suppliers?: EligibleSupplier[];
+    suppliers_excluded?: { supplier_id: string; supplier_name: string; reason: string }[];
+  };
+  return {
+    ...(raw.eligible_suppliers !== undefined ? { eligible_suppliers: raw.eligible_suppliers } : {}),
+    ...(raw.suppliers_excluded?.length ? { suppliers_excluded: raw.suppliers_excluded } : {}),
+    ...wrapStage("geographical_rules", raw),
+  };
+}
 export const evaluatePreferredSupplierCall  = (input: unknown) => fetchApi("/api/evaluate_preferred_supplier",  input).then(r => wrapStage("evaluate_preferred_supplier",  r));
-export const applyDynamicCategoryRulesCall  = (input: unknown) => fetchApi("/api/apply_dynamic_category_rules", input).then(r => wrapStage("apply_dynamic_category_rules", r));
+export async function applyDynamicCategoryRulesCall(input: RequestData): Promise<RequestDataPatch> {
+  const raw = await fetchApi("/api/apply_dynamic_category_rules", input) as NodeResult & {
+    eligible_suppliers?: EligibleSupplier[];
+  };
+  return {
+    ...(raw.eligible_suppliers !== undefined ? { eligible_suppliers: raw.eligible_suppliers } : {}),
+    ...wrapStage("apply_dynamic_category_rules", raw),
+  };
+}
 export const pricingCalculationCall         = (input: unknown) => fetchApi("/api/pricing_calculation",          input).then(r => wrapStage("pricing_calculation",          r));
 export const reevaluateTierCall             = (input: unknown) => fetchApi("/api/reevaluate_tier_from_quote",   input).then(r => wrapStage("reevaluate_tier_from_quote",   r));
 export const scoringAndRankingCall          = (input: unknown) => fetchApi("/api/scoring_and_ranking",          input).then(r => wrapStage("scoring_and_ranking",          r));

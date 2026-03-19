@@ -298,13 +298,17 @@ export function mergeRequestData(prev: RequestData, patch: RequestDataPatch): Re
     console.log(`[RequestData] request_interpretation ← updated fields:`, changed);
   }
 
-  // Remaining top-level fields: arrays append, primitives overwrite
+  // Remaining top-level fields: arrays append, primitives overwrite.
+  // Exception: REPLACE_ARRAYS fields are replaced in-place (they represent current filtered state).
+  const REPLACE_ARRAYS = new Set<string>(["eligible_suppliers"]);
   const skip = new Set(["stages", "request_interpretation"]);
   for (const _key of Object.keys(patch)) {
     if (skip.has(_key)) continue;
     const key = _key as keyof Omit<RequestData, "stages" | "request_interpretation">;
     const val = (patch as Record<string, unknown>)[key];
-    if (Array.isArray((next as Record<string, unknown>)[key]) && Array.isArray(val)) {
+    if (REPLACE_ARRAYS.has(key) && Array.isArray(val)) {
+      (next as Record<string, unknown>)[key] = val;
+    } else if (Array.isArray((next as Record<string, unknown>)[key]) && Array.isArray(val)) {
       (next as Record<string, unknown>)[key] = [...(next as Record<string, unknown>)[key] as unknown[], ...val];
     } else if (val !== undefined) {
       (next as Record<string, unknown>)[key] = val;
