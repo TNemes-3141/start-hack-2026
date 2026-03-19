@@ -22,45 +22,32 @@ type RunRow = {
   last_heartbeat_at: string | null
 }
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
+
+function restHeaders() {
+  return { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const s = Math.floor(diff / 1000)
-  if (s < 60) return `${s}s ago`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60)  return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
 }
 
-type StatusMeta = {
-  label: string
-  dot: string
-  badge: "default" | "secondary" | "destructive" | "outline"
-  bar: string
-}
+type StatusMeta = { label: string; dot: string; badge: "default" | "secondary" | "destructive" | "outline"; bar: string }
 
 function getStatusMeta(status: string): StatusMeta {
-  if (status === "done")
-    return { label: "Completed", dot: "bg-emerald-500", badge: "default", bar: "bg-emerald-500" }
-  if (status === "aborted")
-    return { label: "Aborted", dot: "bg-red-500", badge: "destructive", bar: "bg-red-500" }
-  if (status === "idle")
-    return { label: "Idle", dot: "bg-muted-foreground/40", badge: "outline", bar: "bg-muted-foreground/30" }
-  if (status.endsWith("_active"))
-    return { label: "Running", dot: "bg-blue-500 animate-pulse", badge: "secondary", bar: "bg-blue-500" }
-  if (status.endsWith("_complete"))
-    return { label: "In Progress", dot: "bg-sky-400", badge: "secondary", bar: "bg-sky-400" }
-  return { label: status, dot: "bg-muted-foreground/40", badge: "outline", bar: "bg-muted-foreground/30" }
-}
-
-function restHeaders() {
-  return {
-    apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
-    Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!}`,
-  }
+  if (status === "done")             return { label: "Completed",   dot: "bg-emerald-500",           badge: "default",     bar: "bg-emerald-500" }
+  if (status === "aborted")          return { label: "Aborted",     dot: "bg-red-500",               badge: "destructive", bar: "bg-red-500" }
+  if (status === "idle")             return { label: "Idle",        dot: "bg-muted-foreground/40",   badge: "outline",     bar: "bg-muted-foreground/30" }
+  if (status.endsWith("_active"))    return { label: "Running",     dot: "bg-blue-500 animate-pulse", badge: "secondary",   bar: "bg-blue-500" }
+  if (status.endsWith("_complete"))  return { label: "In Progress", dot: "bg-sky-400",               badge: "secondary",   bar: "bg-sky-400" }
+  return                                    { label: status,        dot: "bg-muted-foreground/40",   badge: "outline",     bar: "bg-muted-foreground/30" }
 }
 
 function countIssues(run: RunRow) {
@@ -74,10 +61,14 @@ function countIssues(run: RunRow) {
   return { warnings, escalations }
 }
 
+function isClosed(status: string) {
+  return status === "done" || status === "aborted"
+}
+
 // ── Run card ──────────────────────────────────────────────────────────────────
 
 function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
-  const interp = run.context_payload?.request_interpretation
+  const interp   = run.context_payload?.request_interpretation
   const title    = interp?.title || interp?.category_l2 || "Untitled Request"
   const catL1    = interp?.category_l1
   const catL2    = interp?.category_l2
@@ -86,75 +77,59 @@ function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
   const bu       = interp?.business_unit
   const country  = interp?.country
   const { label, dot, badge, bar } = getStatusMeta(run.status)
-  const { warnings, escalations } = countIssues(run)
+  const { warnings, escalations }  = countIssues(run)
 
   return (
     <button
       onClick={onClick}
-      className="group w-full text-left flex items-stretch gap-0 hover:bg-accent/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group w-full text-left flex items-stretch hover:bg-accent/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {/* Left status bar */}
-      <div className={`w-0.5 shrink-0 ${bar} opacity-70 group-hover:opacity-100 transition-opacity`} />
+      <div className={`w-0.5 shrink-0 ${bar} opacity-60 group-hover:opacity-100 transition-opacity`} />
 
       <div className="flex-1 flex items-start justify-between gap-4 px-5 py-4">
-        <div className="flex-1 min-w-0 space-y-2">
-          {/* Title row */}
+        <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center gap-2.5">
             <span className={`h-2 w-2 rounded-full shrink-0 ${dot}`} />
-            <p className="text-sm font-semibold text-foreground leading-snug line-clamp-1 flex-1">
-              {title}
-            </p>
+            <p className="text-sm font-semibold text-foreground leading-snug line-clamp-1">{title}</p>
           </div>
 
-          {/* Category row */}
           {(catL1 || catL2) && (
-            <p className="text-xs text-muted-foreground pl-4.5">
+            <p className="text-xs text-muted-foreground pl-[18px]">
               {[catL1, catL2].filter(Boolean).join(" · ")}
             </p>
           )}
 
-          {/* Tags row */}
-          <div className="flex items-center gap-1.5 pl-4.5 flex-wrap">
+          <div className="flex items-center gap-1.5 pl-[18px] flex-wrap">
             {bu && (
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                {bu}
-              </span>
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{bu}</span>
             )}
             {country && (
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                {country}
-              </span>
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{country}</span>
             )}
             {escalations > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
-                <ShieldAlert className="h-3 w-3" />
-                {escalations} escalation{escalations > 1 ? "s" : ""}
+                <ShieldAlert className="h-3 w-3" />{escalations} escalation{escalations > 1 ? "s" : ""}
               </span>
             )}
             {warnings > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                <AlertTriangle className="h-3 w-3" />
-                {warnings} warning{warnings > 1 ? "s" : ""}
+                <AlertTriangle className="h-3 w-3" />{warnings} warning{warnings > 1 ? "s" : ""}
               </span>
             )}
           </div>
         </div>
 
-        {/* Right side */}
-        <div className="flex flex-col items-end gap-2 shrink-0">
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
           <Badge variant={badge} className="text-[10px]">{label}</Badge>
           {budget != null && currency && (
             <span className="text-sm font-bold text-foreground tabular-nums">
               {currency} {budget.toLocaleString()}
             </span>
           )}
-          <span className="text-[11px] text-muted-foreground/60">
-            {timeAgo(run.updated_at ?? run.created_at)}
-          </span>
+          <span className="text-[11px] text-muted-foreground/60">{timeAgo(run.updated_at ?? run.created_at)}</span>
         </div>
       </div>
 
-      {/* Chevron */}
       <div className="flex items-center pr-3 pl-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </div>
@@ -166,9 +141,9 @@ function RunCard({ run, onClick }: { run: RunRow; onClick: () => void }) {
 
 function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
   const interp = run.context_payload?.request_interpretation
-  const title    = interp?.title || interp?.category_l2 || "Untitled Request"
-  const catL1    = interp?.category_l1
-  const catL2    = interp?.category_l2
+  const title  = interp?.title || interp?.category_l2 || "Untitled Request"
+  const catL1  = interp?.category_l1
+  const catL2  = interp?.category_l2
   const { label, dot, badge } = getStatusMeta(run.status)
 
   return (
@@ -193,7 +168,7 @@ function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
   )
 }
 
-// ── Empty list state ──────────────────────────────────────────────────────────
+// ── Empty state ───────────────────────────────────────────────────────────────
 
 function EmptyList({ closed }: { closed: boolean }) {
   return (
@@ -216,25 +191,27 @@ function EmptyList({ closed }: { closed: boolean }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function RunsListPage({ closed }: { closed: boolean }) {
-  const searchParams = useSearchParams()
-  const autoRunId    = searchParams.get("run")
-  const didAutoSelect = useRef(false)
+  const searchParams   = useSearchParams()
+  const autoRunId      = searchParams.get("run")
+  const didAutoSelect  = useRef(false)
 
   const [runs, setRuns]               = useState<RunRow[]>([])
   const [loading, setLoading]         = useState(true)
   const [selectedRun, setSelectedRun] = useState<RunRow | null>(null)
   const [loadingRun, setLoadingRun]   = useState(false)
 
-  // ── Fetch ───────────────────────────────────────────────────────────────
+  // Stable ref so the Realtime handler always has the current selected ID
+  // without needing to be in the dependency array (which would re-subscribe).
+  const selectedIdRef = useRef<string | null>(null)
+  useEffect(() => { selectedIdRef.current = selectedRun?.id ?? null }, [selectedRun])
+
+  // ── Fetch list ─────────────────────────────────────────────────────────────
 
   const fetchRuns = useCallback(async () => {
     setLoading(true)
-    const filter = closed
-      ? "status=in.(done,aborted)"
-      : "status=not.in.(done,aborted)"
+    const filter = closed ? "status=in.(done,aborted)" : "status=not.in.(done,aborted)"
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rag_pipeline_runs` +
-      `?${filter}&order=updated_at.desc&limit=100`,
+      `${SUPABASE_URL}/rest/v1/rag_pipeline_runs?${filter}&order=updated_at.desc&limit=100`,
       { headers: restHeaders() },
     )
     if (res.ok) setRuns(await res.json())
@@ -243,16 +220,9 @@ export function RunsListPage({ closed }: { closed: boolean }) {
 
   useEffect(() => { void fetchRuns() }, [fetchRuns])
 
-  // Auto-select the run from the query param once on first load
-  useEffect(() => {
-    if (autoRunId && !didAutoSelect.current && !loading) {
-      didAutoSelect.current = true
-      void selectRun(autoRunId)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRunId, loading])
-
-  // ── Realtime list refresh ───────────────────────────────────────────────
+  // ── Realtime: stable subscription (no selectedRun in deps) ────────────────
+  // UPDATE events update items in-place — no reordering — to prevent list jumps.
+  // The selected run is tracked via ref so handler is never stale.
 
   useEffect(() => {
     const channel = supabaseBrowser
@@ -262,30 +232,45 @@ export function RunsListPage({ closed }: { closed: boolean }) {
         const removed = payload.old as { id: string } | undefined
 
         if (payload.eventType === "INSERT" && updated) {
-          const isClosed = updated.status === "done" || updated.status === "aborted"
-          if (isClosed === closed) setRuns((p) => [updated, ...p])
+          if (isClosed(updated.status) === closed)
+            setRuns((prev) => [updated, ...prev])
+
         } else if (payload.eventType === "UPDATE" && updated) {
-          const isClosed = updated.status === "done" || updated.status === "aborted"
-          setRuns((p) => {
-            if (isClosed !== closed) return p.filter((r) => r.id !== updated.id)
-            return [updated, ...p.filter((r) => r.id !== updated.id)]
+          const movedBucket = isClosed(updated.status) !== closed
+          setRuns((prev) => {
+            if (movedBucket) return prev.filter((r) => r.id !== updated.id)
+            // Update in-place — preserve order, no jumping
+            return prev.map((r) => r.id === updated.id ? updated : r)
           })
-          if (updated.id === selectedRun?.id) setSelectedRun(updated)
+          // Keep the graph view live if this is the selected run
+          if (updated.id === selectedIdRef.current)
+            setSelectedRun(updated)
+
         } else if (payload.eventType === "DELETE" && removed) {
-          setRuns((p) => p.filter((r) => r.id !== removed.id))
-          if (removed.id === selectedRun?.id) setSelectedRun(null)
+          setRuns((prev) => prev.filter((r) => r.id !== removed.id))
+          if (removed.id === selectedIdRef.current) setSelectedRun(null)
         }
       })
       .subscribe()
-    return () => { void supabaseBrowser.removeChannel(channel) }
-  }, [closed, selectedRun?.id])
 
-  // ── Select ──────────────────────────────────────────────────────────────
+    return () => { void supabaseBrowser.removeChannel(channel) }
+  }, [closed]) // stable — selectedRun tracked via ref above
+
+  // ── Auto-select from query param ──────────────────────────────────────────
+
+  useEffect(() => {
+    if (autoRunId && !didAutoSelect.current && !loading) {
+      didAutoSelect.current = true
+      void selectRun(autoRunId)
+    }
+  }, [autoRunId, loading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Select a run ──────────────────────────────────────────────────────────
 
   async function selectRun(id: string) {
     setLoadingRun(true)
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rag_pipeline_runs?id=eq.${id}&limit=1`,
+      `${SUPABASE_URL}/rest/v1/rag_pipeline_runs?id=eq.${id}&limit=1`,
       { headers: restHeaders() },
     )
     const rows: RunRow[] = await res.json()
@@ -293,9 +278,8 @@ export function RunsListPage({ closed }: { closed: boolean }) {
     setLoadingRun(false)
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
-  // Graph view
   if (loadingRun) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-3.5rem-3rem)] gap-2 text-muted-foreground">
@@ -306,7 +290,7 @@ export function RunsListPage({ closed }: { closed: boolean }) {
   }
 
   if (selectedRun) {
-    const isRunning = selectedRun.status !== "done" && selectedRun.status !== "aborted" && selectedRun.status !== "idle"
+    const isRunning = !isClosed(selectedRun.status) && selectedRun.status !== "idle"
     return (
       <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6">
         <GraphHeader run={selectedRun} onBack={() => setSelectedRun(null)} />
@@ -322,10 +306,8 @@ export function RunsListPage({ closed }: { closed: boolean }) {
     )
   }
 
-  // List view
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6">
-      {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background shrink-0">
         <div>
           <h1 className="text-base font-semibold text-foreground">
@@ -347,7 +329,6 @@ export function RunsListPage({ closed }: { closed: boolean }) {
         </button>
       </div>
 
-      {/* List */}
       <div className="flex-1 overflow-y-auto divide-y divide-border">
         {loading ? (
           <div className="flex items-center justify-center py-20 gap-2 text-muted-foreground">
