@@ -9,13 +9,16 @@ import {
   mergeRequestData,
   type RequestData,
   type RequestInterpretation,
+  type StageId,
 } from "@/lib/request-data";
 import {
   INITIAL_STATUSES,
   NODE_NAME_TO_GRAPH_ID,
+  TERMINAL_STATUSES,
   deriveStatus,
   propagateWorking,
   type NodeStatuses,
+  type PipelineNodeStatus,
 } from "@/lib/pipeline-graph";
 
 const CLIENT_ID: string = uuidv4();
@@ -33,6 +36,7 @@ export type RAGOrchestratorState = {
   mode: OrchestratorMode;
   startPipeline: (form: RequestInterpretation) => Promise<string>;
   approveAndResume: (existingRunId: string, existingData: RequestData, approvedByLabel: string) => Promise<void>;
+  resolveIssue: (runId: string, data: RequestData, existingNodeStatuses: NodeStatuses, stageKey: string, issueId: string) => Promise<void>;
 };
 
 type RunRow = {
@@ -59,6 +63,20 @@ async function patchRun(id: string, patch: Record<string, unknown>) {
     headers: makeHeaders(true),
     body: JSON.stringify(patch),
   });
+}
+
+/** Returns the set of core_agent stage names (e.g. "translation", "missing_required_data")
+ *  that are already in a terminal state in the given graph node statuses. */
+function computeCompletedStages(graphStatuses: NodeStatuses): Set<string> {
+  const graphIdToStageName: Record<string, string> = Object.fromEntries(
+    Object.entries(NODE_NAME_TO_GRAPH_ID).map(([stageName, graphId]) => [graphId, stageName]),
+  );
+  return new Set(
+    Object.entries(graphStatuses)
+      .filter(([, status]) => TERMINAL_STATUSES.has(status as PipelineNodeStatus))
+      .map(([graphId]) => graphIdToStageName[graphId])
+      .filter((name): name is string => name !== undefined),
+  );
 }
 
 export function useRAGOrchestrator(): RAGOrchestratorState {
@@ -186,21 +204,33 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     return id; // Caller gets the ID right after INSERT, not after the pipeline.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Internal pipeline executor (reusable for approve-and-resume) ───────────
+  // ── Internal pipeline executor ─────────────────────────────────────────────
 
-  const runPipeline = useCallback(async (id: string, form: RequestInterpretation) => {
+  const runPipeline = useCallback(async (
+    id: string,
+    form: RequestInterpretation,
+    skipBlockingChecks = false,
+    resumeFrom?: { data: RequestData; completedStages: Set<string> },
+  ) => {
     isRunningRef.current = true;
+    // When resuming, seed the data ref with the existing run's data so downstream
+    // stages receive correct inputs (eligible_suppliers, approval_tier, etc.).
+    if (resumeFrom) {
+      dataRef.current = resumeFrom.data;
+    }
     try {
       await core_agent(form, (nodeName, patch) => {
         // Compute next state from refs — synchronous, no stale closures.
         const nextData    = mergeRequestData(dataRef.current, patch);
         const graphId     = NODE_NAME_TO_GRAPH_ID[nodeName];
         const nodeStatus  = graphId ? deriveStatus(nodeName, patch) : undefined;
+        // On an approved/resumed run, treat blocking nodes as warnings so propagation continues.
+        const effectiveStatus = (skipBlockingChecks && nodeStatus === "escalation") ? "warning" : nodeStatus;
         const withUpdate  = graphId
-          ? { ...statusesRef.current, [graphId]: nodeStatus! }
+          ? { ...statusesRef.current, [graphId]: effectiveStatus! }
           : statusesRef.current;
         // Only propagate "working" to successors when node is NOT blocking.
-        const nextStatuses = (graphId && nodeStatus !== "escalation")
+        const nextStatuses = (graphId && effectiveStatus !== "escalation")
           ? propagateWorking(withUpdate, graphId)
           : withUpdate;
 
@@ -216,11 +246,11 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
           status:            `${nodeName}_complete`,
           last_heartbeat_at: new Date().toISOString(),
         });
-      });
+      }, { skipBlockingChecks, resumeFrom });
     } finally {
       isRunningRef.current = false;
-      // Detect if pipeline aborted due to a blocking issue in any stage.
-      const isBlocked = Object.values(dataRef.current.stages).some(
+      // When skipBlockingChecks is true (approved/resumed run), never re-block at completion.
+      const isBlocked = !skipBlockingChecks && Object.values(dataRef.current.stages).some(
         (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
       );
       const finalStatuses: NodeStatuses = isBlocked
@@ -238,7 +268,7 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Approve a blocked run and re-run the pipeline ─────────────────────────
+  // ── Approve a blocked run and re-run the pipeline from scratch ─────────────
 
   const approveAndResume = useCallback(async (
     existingRunId: string,
@@ -275,8 +305,82 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     setIsPipelineRunning(true);
     startHeartbeat(existingRunId);
 
-    void runPipeline(existingRunId, updatedInterp);
+    void runPipeline(existingRunId, updatedInterp, true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { runId, requestData, nodeStatuses, isPipelineRunning, mode: "owner", startPipeline, approveAndResume };
+  // ── Resolve a single blocking issue and resume from that point ────────────
+
+  const resolveIssue = useCallback(async (
+    runId: string,
+    data: RequestData,
+    existingNodeStatuses: NodeStatuses,
+    stageKey: string,
+    issueId: string,
+  ): Promise<void> => {
+    const stageId = stageKey as StageId;
+    const stage = data.stages[stageId];
+    if (!stage) return;
+
+    const resolvedByLabel = stage.issues.find((i) => i.issue_id === issueId)?.escalate_to ?? "Approver";
+
+    const updatedData: RequestData = {
+      ...data,
+      stages: {
+        ...data.stages,
+        [stageId]: {
+          ...stage,
+          issues: stage.issues.map((i) =>
+            i.issue_id === issueId ? { ...i, blocking: false, resolved: true } : i,
+          ),
+        },
+      },
+    };
+
+    // Persist the resolved state first.
+    await patchRun(runId, { context_payload: updatedData });
+
+    // Check whether any blocking issues or escalations remain.
+    const stillBlocked = Object.values(updatedData.stages).some(
+      (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
+    );
+    if (stillBlocked) return;
+
+    // All blocking cleared — resume from where the pipeline was blocked.
+    const approvalNote = `Resolved by ${resolvedByLabel} on ${new Date().toISOString().slice(0, 10)}`;
+    const updatedInterp: RequestInterpretation = {
+      ...updatedData.request_interpretation,
+      requester_instruction: approvalNote,
+    };
+    const updatedDataWithNote: RequestData = {
+      ...updatedData,
+      request_interpretation: updatedInterp,
+    };
+
+    // Keep statuses from the existing run; reset any "working" nodes to "outstanding".
+    const initStatuses: NodeStatuses = Object.fromEntries(
+      Object.entries(existingNodeStatuses).map(([k, v]) => [k, v === "working" ? "outstanding" : v]),
+    ) as NodeStatuses;
+
+    await patchRun(runId, {
+      status:            "resuming",
+      context_payload:   updatedDataWithNote,
+      node_statuses:     initStatuses,
+      active_client_id:  CLIENT_ID,
+      last_heartbeat_at: new Date().toISOString(),
+    });
+
+    dataRef.current     = updatedDataWithNote;
+    statusesRef.current = initStatuses;
+    setRunId(runId);
+    setRequestData(updatedDataWithNote);
+    setNodeStatuses(initStatuses);
+    setIsPipelineRunning(true);
+    startHeartbeat(runId);
+
+    // Skip stages that already completed in the previous run.
+    const completedStages = computeCompletedStages(existingNodeStatuses);
+    void runPipeline(runId, updatedInterp, true, { data: updatedDataWithNote, completedStages });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { runId, requestData, nodeStatuses, isPipelineRunning, mode: "owner", startPipeline, approveAndResume, resolveIssue };
 }

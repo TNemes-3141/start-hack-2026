@@ -8,6 +8,7 @@ export type Issue = {
   escalate_to: string;
   blocking: boolean;
   severity: IssueSeverity;
+  resolved?: boolean;
 };
 
 export type Escalation = {
