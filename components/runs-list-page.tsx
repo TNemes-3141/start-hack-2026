@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown, Braces, Trash2 } from "lucide-react"
+import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown, Braces, Trash2, Tag, Building2, MapPin, Calendar, Trophy, Clock, CheckCircle2, XCircle } from "lucide-react"
 import { supabaseBrowser } from "@/lib/supabase-browser"
 import { PipelineGraphView } from "@/components/pipeline-graph-view"
 import { INITIAL_STATUSES, type NodeStatuses } from "@/lib/pipeline-graph"
 import { createRequestData, type RequestData } from "@/lib/request-data"
 import { Badge } from "@/components/ui/badge"
 import { useRequestStore } from "@/lib/request-store"
+import type { ShortlistEntry } from "@/lib/request-data"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,14 +121,15 @@ function RunCard({ run, onClick, onDelete }: { run: RunRow; onClick: () => void;
     }
   }
 
-  const interp   = run.context_payload?.request_interpretation
-  const title    = interp?.title || interp?.category_l2 || "Untitled Request"
-  const catL1    = interp?.category_l1
-  const catL2    = interp?.category_l2
-  const budget   = interp?.budget_amount
-  const currency = interp?.currency
-  const bu       = interp?.business_unit
-  const country  = interp?.country
+  const interp     = run.context_payload?.request_interpretation
+  const title      = interp?.title || interp?.category_l2 || "Untitled Request"
+  const catL1      = interp?.category_l1
+  const catL2      = interp?.category_l2
+  const budget     = interp?.budget_amount
+  const currency   = interp?.currency
+  const bu         = interp?.business_unit
+  const country    = interp?.country
+  const requiredBy = interp?.required_by_date
   const { label, dot, badge, bar } = getStatusMeta(run.status)
   const { warnings, escalations }  = countIssues(run)
 
@@ -140,23 +142,33 @@ function RunCard({ run, onClick, onDelete }: { run: RunRow; onClick: () => void;
 
       <div className="flex-1 flex items-start justify-between gap-4 px-5 py-4">
         <div className="flex-1 min-w-0 space-y-1.5">
+          {/* Title */}
           <div className="flex items-center gap-2.5">
             <span className={`h-2 w-2 rounded-full shrink-0 ${dot}`} />
             <p className="text-sm font-semibold text-foreground leading-snug line-clamp-1">{title}</p>
           </div>
 
-          {(catL1 || catL2) && (
-            <p className="text-xs text-muted-foreground pl-4.5">
-              {[catL1, catL2].filter(Boolean).join(" · ")}
-            </p>
-          )}
-
+          {/* Meta row: all items as uniform pills so height is consistent */}
           <div className="flex items-center gap-1.5 pl-4.5 flex-wrap">
+            {(catL1 || catL2) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                <Tag className="h-3 w-3 shrink-0" />{[catL1, catL2].filter(Boolean).join(" / ")}
+              </span>
+            )}
             {bu && (
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{bu}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                <Building2 className="h-3 w-3 shrink-0" />{bu}
+              </span>
             )}
             {country && (
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{country}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                <MapPin className="h-3 w-3 shrink-0" />{country}
+              </span>
+            )}
+            {requiredBy && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                <Calendar className="h-3 w-3 shrink-0" />{requiredBy}
+              </span>
             )}
             {escalations > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
@@ -315,7 +327,7 @@ function EscalationInfoCard({ requestData }: { requestData: RequestData }) {
         )}
       </div>
       <div className="flex flex-col gap-1.5">
-        {escalations.sort((esc1, esc2) => esc1.blocking ? -1 : 1).map((e) => (
+        {escalations.sort((esc1) => esc1.blocking ? -1 : 1).map((e) => (
           <div
             key={e.escalation_id}
             className="flex items-start gap-3 rounded-md border bg-background px-3 py-2"
@@ -329,6 +341,127 @@ function EscalationInfoCard({ requestData }: { requestData: RequestData }) {
               → <span className="font-medium text-foreground">{e.escalate_to}</span>
             </span>
           </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Supplier Shortlist ────────────────────────────────────────────────────────
+
+const RANK_STYLES: Record<number, { ring: string; badge: string }> = {
+  1: { ring: "ring-amber-400/50",    badge: "bg-amber-400/20 text-amber-700 dark:text-amber-300" },
+  2: { ring: "ring-slate-400/50",    badge: "bg-slate-400/20 text-slate-600 dark:text-slate-400" },
+  3: { ring: "ring-orange-700/40",   badge: "bg-orange-700/15 text-orange-800 dark:text-orange-400" },
+}
+
+function ScorePip({ label, value, color }: { label: string; value: number | null; color: string }) {
+  if (value === null) return null
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className={`text-xs font-bold tabular-nums ${color}`}>{value}</span>
+      <span className="text-[10px] text-muted-foreground leading-none">{label}</span>
+    </div>
+  )
+}
+
+function SupplierCard({ entry, currency }: { entry: ShortlistEntry; currency?: string }) {
+  const { ring, badge } = RANK_STYLES[entry.rank] ?? { ring: "ring-border", badge: "bg-muted text-muted-foreground" }
+  const score = entry.scoring_breakdown?.final_score ?? entry.ranking_score
+  const cur = entry.currency ?? currency ?? ""
+  const leadStatus = entry.scoring_breakdown?.lead_time_status
+  const leadLabel =
+    leadStatus === "expedited_only" ? `${entry.expedited_lead_time_days}d (exp.)`
+    : leadStatus === "cannot_meet"  ? "Cannot meet"
+    : entry.standard_lead_time_days ? `${entry.standard_lead_time_days}d`
+    : "—"
+  const leadColor =
+    leadStatus === "cannot_meet"  ? "text-destructive"
+    : leadStatus === "expedited_only" ? "text-amber-500"
+    : "text-emerald-600 dark:text-emerald-400"
+
+  return (
+    <div className={`flex flex-col gap-3 rounded-xl border bg-card p-4 w-60 shrink-0 ring-1 ${ring}`}>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold ${badge}`}>#{entry.rank}</span>
+            {entry.preferred_supplier && (
+              <span className="rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">Preferred</span>
+            )}
+            {entry.is_incumbent && (
+              <span className="rounded-full bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">Incumbent</span>
+            )}
+            {entry.is_requester_preferred && !entry.preferred_supplier && (
+              <span className="rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:text-sky-400">Req. pref.</span>
+            )}
+          </div>
+          <p className="text-sm font-semibold text-foreground line-clamp-1 leading-snug">{entry.supplier_name ?? entry.supplier_id}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{[entry.country_hq, entry.currency].filter(Boolean).join(" · ")}</p>
+        </div>
+        <div className="flex flex-col items-end shrink-0 pt-1">
+          <span className="text-base font-bold text-foreground tabular-nums">{score?.toFixed(1) ?? "—"}</span>
+          <span className="text-[10px] text-muted-foreground leading-none">score</span>
+        </div>
+      </div>
+
+      {/* Pricing */}
+      <div className="rounded-lg bg-muted/50 px-3 py-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] text-muted-foreground">Total</p>
+          <p className="text-sm font-bold text-foreground tabular-nums">{cur} {entry.total_price?.toLocaleString() ?? "—"}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] text-muted-foreground">Per unit</p>
+          <p className="text-xs font-semibold text-foreground tabular-nums">{cur} {entry.unit_price?.toLocaleString() ?? "—"}</p>
+        </div>
+      </div>
+
+      {/* Lead time + scores */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 min-w-0">
+          <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
+          <span className={`text-xs font-medium truncate ${leadColor}`}>{leadLabel}</span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <ScorePip label="Qual" value={entry.quality_score} color="text-sky-600 dark:text-sky-400" />
+          <ScorePip label="Risk" value={entry.risk_score} color={(entry.risk_score ?? 0) > 50 ? "text-amber-600" : "text-emerald-600 dark:text-emerald-400"} />
+          <ScorePip label="ESG" value={entry.esg_score} color="text-teal-600 dark:text-teal-400" />
+        </div>
+      </div>
+
+      {/* Compliance badges */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {entry.policy_compliant
+          ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-3 w-3" />Compliant</span>
+          : <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive"><XCircle className="h-3 w-3" />Non-compliant</span>
+        }
+        {!entry.covers_delivery_country && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"><MapPin className="h-3 w-3" />Out of region</span>
+        )}
+      </div>
+
+      {/* Recommendation note */}
+      {entry.recommendation_note && (
+        <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2 border-t border-border pt-2">{entry.recommendation_note}</p>
+      )}
+    </div>
+  )
+}
+
+function SupplierShortlistSection({ shortlist, currency }: { shortlist: ShortlistEntry[]; currency?: string }) {
+  if (shortlist.length === 0) return null
+  return (
+    <div className="shrink-0 border-t border-border bg-background/95 backdrop-blur">
+      <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border/50">
+        <Trophy className="h-4 w-4 text-amber-500 shrink-0" />
+        <span className="text-sm font-semibold">Supplier Shortlist</span>
+        <span className="text-xs text-muted-foreground">{shortlist.length} candidate{shortlist.length !== 1 ? "s" : ""}</span>
+      </div>
+      <div className="flex gap-4 px-6 py-4 overflow-x-auto">
+        {shortlist.map((s) => (
+          <SupplierCard key={s.supplier_id} entry={s} currency={currency} />
         ))}
       </div>
     </div>
@@ -544,6 +677,10 @@ export function RunsListPage({
             }}
           />
         </div>
+        <SupplierShortlistSection
+          shortlist={selectedRun.context_payload?.supplier_shortlist ?? []}
+          currency={selectedRun.context_payload?.request_interpretation?.currency}
+        />
       </div>
     )
   }

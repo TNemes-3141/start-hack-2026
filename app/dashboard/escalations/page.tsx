@@ -1,6 +1,5 @@
 import { getSession } from "@/lib/session"
 import { EscalationReportPage } from "@/components/escalation-report-page"
-import { RunsListPage } from "@/components/runs-list-page"
 
 // Role → escalation target keywords that appear in escalate_to fields
 const ROLE_TARGETS: Record<string, string[]> = {
@@ -9,16 +8,17 @@ const ROLE_TARGETS: Record<string, string[]> = {
   "cpo":                         ["cpo"],
 }
 
+// Senior-role keywords excluded from the procurement catch-all view
+const SENIOR_TARGETS = Object.values(ROLE_TARGETS).flat()
+
 export default async function EscalationsPage() {
   const session = await getSession()
   const role = session.role
   const roleLabel = session.roleLabel ?? "Unknown Role"
 
-  const targets = role ? (ROLE_TARGETS[role] ?? []) : []
-
-  // CPO, Head of Category, Head of Strategic Sourcing get the detailed report view.
-  // Any other non-procurement role falls back to the standard list view.
+  // Senior roles (Head of Category, Head of Strategic Sourcing, CPO) see only their own escalations
   if (role && role in ROLE_TARGETS) {
+    const targets = ROLE_TARGETS[role]
     return (
       <div>
         <EscalationReportPage escalateTo={targets} roleLabel={roleLabel} />
@@ -26,10 +26,10 @@ export default async function EscalationsPage() {
     )
   }
 
-  // Fallback: standard escalation list (shows all blocking escalations)
+  // Procurement (and any other role) sees everything NOT destined for a senior role
   return (
     <div>
-      <RunsListPage escalateTo={[]} />
+      <EscalationReportPage escalateTo={[]} excludeTargets={SENIOR_TARGETS} roleLabel={roleLabel} />
     </div>
   )
 }

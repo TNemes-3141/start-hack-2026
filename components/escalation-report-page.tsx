@@ -94,25 +94,28 @@ const STAGE_LABELS: Record<string, string> = {
   final_check: "Final Check",
 }
 
-function matchesTarget(value: string | undefined, targets: string[]): boolean {
-  if (!value) return false
-  return targets.some((t) => value.toLowerCase().includes(t.toLowerCase()))
+function matchesTargets(escalateTo: string | undefined, targets: string[], excludeTargets: string[]): boolean {
+  const lower = escalateTo?.toLowerCase() ?? ""
+  if (!lower) return false
+  if (excludeTargets.some((x) => lower.includes(x.toLowerCase()))) return false
+  if (targets.length === 0) return true
+  return targets.some((t) => lower.includes(t.toLowerCase()))
 }
 
-function runHasEscalationFor(run: RunRow, targets: string[]): boolean {
-  if (targets.length === 0) return true
+function runHasEscalationFor(run: RunRow, targets: string[], excludeTargets: string[] = []): boolean {
+  if (targets.length === 0 && excludeTargets.length === 0) return true
 
   // For completed runs awaiting senior sign-off, check all signals
   if (run.status === "final_check_complete" || run.status === "done") {
     // 1. deviation_approval_required_from on the tier
     const deviationApprovers: string[] = run.context_payload?.approval_tier?.deviation_approval_required_from ?? []
-    if (deviationApprovers.some((a) => matchesTarget(a, targets))) return true
+    if (deviationApprovers.some((a) => matchesTargets(a, targets, excludeTargets))) return true
 
     // 2. Non-blocking escalations (approval_tier stage writes these for tier 3/4/5)
     if (run.context_payload?.stages) {
       for (const stage of Object.values(run.context_payload.stages)) {
         for (const e of stage.escalations ?? []) {
-          if (matchesTarget(e.escalate_to, targets)) return true
+          if (matchesTargets(e.escalate_to, targets, excludeTargets)) return true
         }
       }
     }
@@ -122,17 +125,17 @@ function runHasEscalationFor(run: RunRow, targets: string[]): boolean {
   for (const stage of Object.values(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
       if (!e.blocking) continue
-      if (matchesTarget(e.escalate_to, targets)) return true
+      if (matchesTargets(e.escalate_to, targets, excludeTargets)) return true
     }
     for (const i of stage.issues ?? []) {
       if (!i.blocking) continue
-      if (matchesTarget(i.escalate_to, targets)) return true
+      if (matchesTargets(i.escalate_to, targets, excludeTargets)) return true
     }
   }
   return false
 }
 
-function getRoleEscalations(run: RunRow, targets: string[]) {
+function getRoleEscalations(run: RunRow, targets: string[], excludeTargets: string[] = []) {
   const result: { stageKey: string; stageLabel: string; rule?: string; trigger: string; escalate_to: string; blocking: boolean; isFinalApproval?: boolean }[] = []
 
   // For completed runs awaiting senior sign-off, surface the approval requirement
@@ -147,7 +150,7 @@ function getRoleEscalations(run: RunRow, targets: string[]) {
     if (run.context_payload?.stages) {
       for (const stage of Object.values(run.context_payload.stages)) {
         for (const e of stage.escalations ?? []) {
-          if (matchesTarget(e.escalate_to, targets)) {
+          if (matchesTargets(e.escalate_to, targets, excludeTargets)) {
             approvalTarget = e.escalate_to
             approvalTrigger = e.trigger
           }
@@ -155,7 +158,7 @@ function getRoleEscalations(run: RunRow, targets: string[]) {
       }
     }
 
-    const matched = deviationApprovers.some((a) => matchesTarget(a, targets))
+    const matched = deviationApprovers.some((a) => matchesTargets(a, targets, excludeTargets))
       || !!approvalTrigger
 
     if (targets.length === 0 || matched) {
@@ -175,13 +178,13 @@ function getRoleEscalations(run: RunRow, targets: string[]) {
   for (const [stageKey, stage] of Object.entries(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
       if (!e.blocking) continue
-      if (targets.length === 0 || targets.some((t) => e.escalate_to?.toLowerCase().includes(t.toLowerCase()))) {
+      if (matchesTargets(e.escalate_to, targets, excludeTargets)) {
         result.push({ stageKey, stageLabel: STAGE_LABELS[stageKey] ?? stageKey, rule: e.rule, trigger: e.trigger, escalate_to: e.escalate_to, blocking: true })
       }
     }
     for (const i of stage.issues ?? []) {
       if (!i.blocking) continue
-      if (targets.length === 0 || targets.some((t) => i.escalate_to?.toLowerCase().includes(t.toLowerCase()))) {
+      if (matchesTargets(i.escalate_to, targets, excludeTargets)) {
         result.push({ stageKey, stageLabel: STAGE_LABELS[stageKey] ?? stageKey, trigger: i.trigger, escalate_to: i.escalate_to, blocking: true })
       }
     }
@@ -256,11 +259,13 @@ function Section({ title, icon: Icon, children, defaultOpen = true }: {
 function EscalationReportCard({
   run,
   targets,
+  excludeTargets = [],
   roleLabel,
   onAbort,
 }: {
   run: RunRow
   targets: string[]
+  excludeTargets?: string[]
   roleLabel: string
   onAbort: (runId: string) => void
 }) {
@@ -276,7 +281,7 @@ function EscalationReportCard({
   const recommendation = data.recommendation
   const audit = data.audit_trail
 
-  const myEscalations = getRoleEscalations(run, targets)
+  const myEscalations = getRoleEscalations(run, targets, excludeTargets)
   const allReasonings = getAllReasonings(run)
   const policyViolations = getAllPolicyViolations(run)
 
@@ -801,9 +806,11 @@ function EscalationReportCard({
 
 export function EscalationReportPage({
   escalateTo,
+  excludeTargets = [],
   roleLabel,
 }: {
   escalateTo: string[]
+  excludeTargets?: string[]
   roleLabel: string
 }) {
   const [allRuns, setAllRuns] = useState<RunRow[]>([])
@@ -812,7 +819,7 @@ export function EscalationReportPage({
   const escalateToRef = useRef(escalateTo)
   useEffect(() => { escalateToRef.current = escalateTo }, [escalateTo])
 
-  const runs = allRuns.filter((r) => runHasEscalationFor(r, escalateTo))
+  const runs = allRuns.filter((r) => runHasEscalationFor(r, escalateTo, excludeTargets))
 
   function handleAbort(runId: string) {
     setAllRuns((prev) => prev.filter((r) => r.id !== runId))
@@ -899,6 +906,7 @@ export function EscalationReportPage({
                 key={run.id}
                 run={run}
                 targets={escalateTo}
+                excludeTargets={excludeTargets}
                 roleLabel={roleLabel}
                 onAbort={handleAbort}
               />

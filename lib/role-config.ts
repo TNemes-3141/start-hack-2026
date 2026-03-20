@@ -17,8 +17,9 @@ export function roleSeesEscalations(role: Role | undefined): boolean {
 export function getNavItems(role: Role | undefined): NavItem[] {
   if (role === "procurement") {
     return [
-      { label: "Open Requests",   href: "/dashboard/open-requests",   icon: FolderOpen,   description: "Track all active procurement requests currently in progress." },
-      { label: "Closed Requests", href: "/dashboard/closed-requests", icon: FolderCheck,  description: "Browse completed and resolved procurement requests." },
+      { label: "My Escalations",  href: "/dashboard/escalations",     icon: AlertTriangle, description: "Review requests escalated to Procurement Manager requiring your approval." },
+      { label: "Open Requests",   href: "/dashboard/open-requests",   icon: FolderOpen,    description: "Track all active procurement requests currently in progress." },
+      { label: "Closed Requests", href: "/dashboard/closed-requests", icon: FolderCheck,   description: "Browse completed and resolved procurement requests." },
     ]
   }
   // All approval-level roles see only escalated requests
