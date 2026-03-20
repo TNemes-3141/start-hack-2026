@@ -12,7 +12,7 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@react-three/postprocessing": "^3.0.4",
-    "@sparticuz/chromium": "^143.0.4",
+    "@sparticuz/chromium-min": "^143.0.4",
     "@supabase/supabase-js": "^2.99.2",
     "@types/uuid": "^10.0.0",
     "@xyflow/react": "^12.10.1",

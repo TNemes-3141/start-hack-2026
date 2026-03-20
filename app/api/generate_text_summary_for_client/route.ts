@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
-import chromium from "@sparticuz/chromium";
+import chromium from "@sparticuz/chromium-min";
 import puppeteerCore from "puppeteer-core";
 
 const client = new OpenAI();
@@ -73,7 +73,9 @@ export async function POST(req: NextRequest) {
 
   const browser = await puppeteerCore.launch({
     args: chromium.args,
-    executablePath: await chromium.executablePath(),
+    executablePath: await chromium.executablePath(
+      "https://github.com/Sparticuz/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.x64.tar"
+    ),
     headless: true,
   });
   const page = await browser.newPage();
