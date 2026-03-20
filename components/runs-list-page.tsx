@@ -680,7 +680,7 @@ export function RunsListPage({
       <div className="flex flex-col -m-6">
         <GraphHeader run={selectedRun} onBack={() => setSelectedRun(null)} />
         <EscalationInfoCard requestData={selectedRun.context_payload ?? createRequestData()} />
-        <div className="p-6 h-[calc(100vh-3.5rem-3rem)]">
+        <div className="p-6">
           <PipelineGraphView
             nodeStatuses={selectedRun.node_statuses ?? INITIAL_STATUSES}
             requestData={selectedRun.context_payload ?? createRequestData()}
