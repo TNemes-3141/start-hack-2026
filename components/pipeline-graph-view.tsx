@@ -444,14 +444,6 @@ function SectionHeader({
   );
 }
 
-function SubsectionHeader({ title }: { icon: React.ReactNode; title: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-xs font-semibold text-foreground">{title}</span>
-    </div>
-  );
-}
-
 function EmptyState({ label }: { label: string }) {
   return <p className="text-xs text-muted-foreground italic">{label}</p>;
 }
@@ -842,44 +834,14 @@ function MarkdownContent({ content }: { content: string }) {
 // ── AI summary section ────────────────────────────────────────────────────────
 
 function AiSummarySection({
-  data,
-  active,
-  onSummaryGenerated,
+  summary,
+  loading,
+  error,
 }: {
-  data: RequestData;
-  active: boolean;
-  onSummaryGenerated?: (summary: string) => void;
+  summary: string | null;
+  loading: boolean;
+  error: string | null;
 }) {
-  const [summary, setSummary] = useState<string | null>(
-    data.ai_summary ?? null,
-  );
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fetchedFor = useRef<string | null>(
-    data.ai_summary ? data.request_id : null,
-  );
-
-  useEffect(() => {
-    if (!active) return;
-    if (fetchedFor.current === data.request_id) return;
-    fetchedFor.current = data.request_id;
-    setLoading(true);
-    setSummary(null);
-    setError(null);
-    fetch("/api/procurement-summary", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestData: data }),
-    })
-      .then((r) => r.json())
-      .then((j) => {
-        setSummary(j.summary);
-        onSummaryGenerated?.(j.summary);
-      })
-      .catch(() => setError("Failed to generate summary."))
-      .finally(() => setLoading(false));
-  }, [active, data, onSummaryGenerated]);
-
   return (
     <CollapsibleSection
       icon={
@@ -931,7 +893,33 @@ function NodeDetailPanel({
   const label = nodeLabels[nodeId];
   const { icon } = statusConfig[status];
 
-  console.log("request", data);
+  // ── AI summary state (kept here so it survives Sheet open/close) ───────────
+  const [aiSummary, setAiSummary] = useState<string | null>(data.ai_summary ?? null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const fetchedFor = useRef<string | null>(data.ai_summary ? data.request_id : null);
+
+  const isDoneActive = open && nodeId === "done";
+  useEffect(() => {
+    if (!isDoneActive) return;
+    if (fetchedFor.current === data.request_id) return;
+    fetchedFor.current = data.request_id;
+    setAiLoading(true);
+    setAiSummary(null);
+    setAiError(null);
+    fetch("/api/procurement-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestData: data }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        setAiSummary(j.summary);
+        onSummaryGenerated?.(j.summary);
+      })
+      .catch(() => setAiError("Failed to generate summary."))
+      .finally(() => setAiLoading(false));
+  }, [isDoneActive, data, onSummaryGenerated]);
 
   const stageKey = nodeToStageId[nodeId];
   const stageData = stageKey
@@ -1160,13 +1148,17 @@ function NodeDetailPanel({
               </div>
             )}
           </div>
-          <Separator />
+          {nodeId === "done" && (
+            <>
+              <Separator />
 
-          <AiSummarySection
-            data={data}
-            active={open && nodeId === "done"}
-            onSummaryGenerated={onSummaryGenerated}
-          />
+              <AiSummarySection
+                summary={aiSummary}
+                loading={aiLoading}
+                error={aiError}
+              />
+            </>
+          )}
           <Separator />
           {showApprovalTier && approvalTier && (
             <>
@@ -1435,6 +1427,7 @@ export function PipelineGraphView({
   onResolveIssue,
   onAcknowledgeItem,
   onSummaryGenerated,
+  openDonePanelTrigger,
 }: {
   nodeStatuses: NodeStatuses;
   requestData: RequestData;
@@ -1448,11 +1441,18 @@ export function PipelineGraphView({
     itemId: string,
   ) => Promise<void>;
   onSummaryGenerated?: (summary: string) => void;
+  openDonePanelTrigger?: number;
 }) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const [selectedNodeId, setSelectedNodeId] = useState<NodeId | null>(null);
+
+  useEffect(() => {
+    if (openDonePanelTrigger && openDonePanelTrigger > 0) {
+      setSelectedNodeId("done");
+    }
+  }, [openDonePanelTrigger]);
   const lastNodeId = useRef<NodeId | null>(null);
   if (selectedNodeId) lastNodeId.current = selectedNodeId;
   const [isApproving, setIsApproving] = useState(false);
@@ -1538,18 +1538,21 @@ export function PipelineGraphView({
     setSelectedNodeId(node.id as NodeId);
   }, []);
 
-  const onInit = useCallback((instance: ReactFlowInstance) => {
-  if (nodes.length === 0) return;
-  
-  const bounds = getNodesBounds(nodes);  // All nodes bounds
-  instance.fitView({
-    padding: 0.15,                // Tight margin
-    includeHiddenNodes: false,
-    maxZoom: 1.2,                 // Prevent over-zoom
-    duration: 0,                // Smooth animation
-    // Auto-centers graph center in viewport
-  });
-}, [nodes]);
+  const onInit = useCallback(
+    (instance: ReactFlowInstance) => {
+      if (nodes.length === 0) return;
+
+      const bounds = getNodesBounds(nodes); // All nodes bounds
+      instance.fitView({
+        padding: 0.15, // Tight margin
+        includeHiddenNodes: false,
+        maxZoom: 1.2, // Prevent over-zoom
+        duration: 0, // Smooth animation
+        // Auto-centers graph center in viewport
+      });
+    },
+    [nodes],
+  );
 
   // Derive blocked state: any stage has an unacknowledged blocking escalation or unresolved blocking issue
   const isBlocked =
@@ -1645,8 +1648,10 @@ export function PipelineGraphView({
           elementsSelectable={false}
           panOnScroll={false} // No panning
           zoomOnScroll={false}
+          zoomOnDoubleClick={false}
+          zoomOnPinch={false}
           panOnDrag={false}
-          zoomActivationKeyCode="Control"
+          zoomActivationKeyCode={null}
           preventScrolling={false}
           minZoom={0.1}
           maxZoom={1.5}
