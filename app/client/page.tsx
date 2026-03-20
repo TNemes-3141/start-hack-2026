@@ -366,9 +366,9 @@ function ClientPageContent() {
     return () => window.clearTimeout(timer);
   }, [transcript, isRecording]);
 
-  function handleSubmit() {
-    startPipeline(form as RequestInterpretation);
-    router.push("/dashboard/request");
+  async function handleSubmit() {
+    const id = await startPipeline(form as RequestInterpretation);
+    router.push(`/dashboard/open-requests?run=${id}`);
   }
 
   return (

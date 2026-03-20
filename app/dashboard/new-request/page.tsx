@@ -240,9 +240,9 @@ export default function ClientPage() {
     }
   }
 
-  function handleSubmit() {
-    startPipeline(form as RequestInterpretation);
-    router.push("/dashboard/request");
+  async function handleSubmit() {
+    const id = await startPipeline(form as RequestInterpretation);
+    router.push(`/dashboard/open-requests?run=${id}`);
   }
 
   return (
