@@ -542,6 +542,14 @@ export function RunsListPage({
             onResolveIssue={async (stageKey, issueId) => {
               await resolveIssue(selectedRun.id, selectedRun.context_payload ?? createRequestData(), selectedRun.node_statuses ?? INITIAL_STATUSES, stageKey, issueId)
             }}
+            onSummaryGenerated={async (summary) => {
+              const payload = { ...(selectedRun.context_payload ?? createRequestData()), ai_summary: summary }
+              await fetch(`${SUPABASE_URL}/rest/v1/rag_pipeline_runs?id=eq.${selectedRun.id}`, {
+                method: "PATCH",
+                headers: { ...restHeaders(), "Content-Type": "application/json" },
+                body: JSON.stringify({ context_payload: payload }),
+              })
+            }}
           />
         </div>
       </div>

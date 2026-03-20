@@ -32,6 +32,9 @@ import {
   ThumbsUp,
   UserCheck,
   CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import type { PipelineNodeStatus, NodeStatuses } from "@/lib/pipeline-graph";
 import type { OrchestratorMode } from "@/hooks/use-rag-orchestrator";
@@ -307,7 +310,7 @@ const nodeLabels: Record<NodeId, string> = {
   "re-evaluate-tier": "Re-evaluate Tier from Quote",
   "scoring-ranking": "Scoring and Ranking",
   "final-check": "Final Check",
-  done: "Done",
+  done: "Results",
 };
 
 const nodeDefinitions: Omit<Node, "data">[] = [
@@ -440,6 +443,14 @@ function SectionHeader({
   );
 }
 
+function SubsectionHeader({ title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <span className="text-xs font-semibold text-foreground">{title}</span>
+    </div>
+  );
+}
+
 function EmptyState({ label }: { label: string }) {
   return <p className="text-xs text-muted-foreground italic">{label}</p>;
 }
@@ -546,6 +557,244 @@ function IssueCard({
   );
 }
 
+// ── Collapsible section ───────────────────────────────────────────────────────
+
+function CollapsibleSection({
+  icon,
+  title,
+  defaultOpen,
+  count,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  defaultOpen: boolean;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center justify-between w-full gap-2 mb-2 group"
+      >
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="text-sm font-semibold text-foreground">{title}</span>
+          {count != null && (
+            <Badge variant="secondary" className="text-[10px] tabular-nums">
+              {count}
+            </Badge>
+          )}
+        </div>
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        )}
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+// ── Simple inline markdown renderer ──────────────────────────────────────────
+
+function renderInlineMarkdown(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    if (match[2] != null) parts.push(<strong key={key++}>{match[2]}</strong>);
+    else if (match[3] != null) parts.push(<em key={key++}>{match[3]}</em>);
+    else if (match[4] != null)
+      parts.push(
+        <code key={key++} className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+          {match[4]}
+        </code>,
+      );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // Fenced code block
+    if (line.startsWith("```")) {
+      line.slice(3); // lang hint (unused)
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      nodes.push(
+        <pre key={key++} className="rounded-md bg-muted px-3 py-2 overflow-x-auto">
+          <code className="text-[10px] font-mono">{codeLines.join("\n")}</code>
+        </pre>,
+      );
+      i++; // skip closing ```
+      continue;
+    }
+    // H3
+    if (line.startsWith("### ")) {
+      nodes.push(
+        <h3 key={key++} className="text-xs font-bold text-foreground mt-2 mb-0.5">
+          {renderInlineMarkdown(line.slice(4))}
+        </h3>,
+      );
+      i++;
+      continue;
+    }
+    // H2
+    if (line.startsWith("## ")) {
+      nodes.push(
+        <h2 key={key++} className="text-xs font-bold text-foreground mt-2 mb-0.5 uppercase tracking-wide">
+          {renderInlineMarkdown(line.slice(3))}
+        </h2>,
+      );
+      i++;
+      continue;
+    }
+    // H1
+    if (line.startsWith("# ")) {
+      nodes.push(
+        <h1 key={key++} className="text-xs font-bold text-foreground mt-2 mb-1">
+          {renderInlineMarkdown(line.slice(2))}
+        </h1>,
+      );
+      i++;
+      continue;
+    }
+    // Unordered list item
+    if (/^[-*] /.test(line)) {
+      const items: React.ReactNode[] = [];
+      while (i < lines.length && /^[-*] /.test(lines[i])) {
+        items.push(
+          <li key={i} className="ml-3 list-disc">
+            {renderInlineMarkdown(lines[i].slice(2))}
+          </li>,
+        );
+        i++;
+      }
+      nodes.push(
+        <ul key={key++} className="flex flex-col gap-0.5 my-1">
+          {items}
+        </ul>,
+      );
+      continue;
+    }
+    // Ordered list item
+    if (/^\d+\. /.test(line)) {
+      const items: React.ReactNode[] = [];
+      while (i < lines.length && /^\d+\. /.test(lines[i])) {
+        items.push(
+          <li key={i} className="ml-3 list-decimal">
+            {renderInlineMarkdown(lines[i].replace(/^\d+\. /, ""))}
+          </li>,
+        );
+        i++;
+      }
+      nodes.push(
+        <ol key={key++} className="flex flex-col gap-0.5 my-1">
+          {items}
+        </ol>,
+      );
+      continue;
+    }
+    // Blank line
+    if (line.trim() === "") {
+      nodes.push(<div key={key++} className="h-1.5" />);
+      i++;
+      continue;
+    }
+    // Paragraph
+    nodes.push(
+      <p key={key++} className="leading-relaxed">
+        {renderInlineMarkdown(line)}
+      </p>,
+    );
+    i++;
+  }
+  return (
+    <div className="text-xs text-muted-foreground flex flex-col gap-0.5">
+      {nodes}
+    </div>
+  );
+}
+
+// ── AI summary section ────────────────────────────────────────────────────────
+
+function AiSummarySection({
+  data,
+  active,
+  onSummaryGenerated,
+}: {
+  data: RequestData;
+  active: boolean;
+  onSummaryGenerated?: (summary: string) => void;
+}) {
+  const [summary, setSummary] = useState<string | null>(data.ai_summary ?? null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fetchedFor = useRef<string | null>(data.ai_summary ? data.request_id : null);
+
+  useEffect(() => {
+    if (!active) return;
+    if (fetchedFor.current === data.request_id) return;
+    fetchedFor.current = data.request_id;
+    setLoading(true);
+    setSummary(null);
+    setError(null);
+    fetch("/api/procurement-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestData: data }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        setSummary(j.summary);
+        onSummaryGenerated?.(j.summary);
+      })
+      .catch(() => setError("Failed to generate summary."))
+      .finally(() => setLoading(false));
+  }, [active, data, onSummaryGenerated]);
+
+  return (
+    <CollapsibleSection
+      icon={<Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />}
+      title="AI Summary"
+      defaultOpen={true}
+    >
+      {loading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Generating summary…
+        </div>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {summary && (
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+          <MarkdownContent content={summary} />
+        </div>
+      )}
+    </CollapsibleSection>
+  );
+}
+
+// ── Node detail panel ─────────────────────────────────────────────────────────
+
 function NodeDetailPanel({
   nodeId,
   status,
@@ -553,6 +802,7 @@ function NodeDetailPanel({
   open,
   onClose,
   onResolveIssue,
+  onSummaryGenerated,
 }: {
   nodeId: NodeId;
   status: PipelineNodeStatus;
@@ -560,9 +810,12 @@ function NodeDetailPanel({
   open: boolean;
   onClose: () => void;
   onResolveIssue?: (issueId: string) => Promise<void>;
+  onSummaryGenerated?: (summary: string) => void;
 }) {
   const label = nodeLabels[nodeId];
   const { icon } = statusConfig[status];
+
+  console.log("request", data)
 
   const stageKey = nodeToStageId[nodeId];
   const stageData = stageKey
@@ -591,6 +844,15 @@ function NodeDetailPanel({
     (a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0),
   );
 
+  // For the done node — aggregate across all stages
+  const allEscalations = Object.values(data.stages).flatMap(
+    (s) => s.escalations ?? [],
+  );
+  const allIssues = Object.values(data.stages).flatMap((s) => s.issues ?? []);
+  const allPolicyViolations = Object.values(data.stages).flatMap(
+    (s) => s.policy_violations ?? [],
+  );
+
   const showApprovalTier = nodeId === "approval-tier";
   const showSuppliers = [
     "purely-eligible-suppliers",
@@ -601,16 +863,89 @@ function NodeDetailPanel({
     "pricing-calculation",
     "scoring-ranking",
     "final-check",
-    "done",
+    "done"
   ].includes(nodeId);
   const showRecommendation = nodeId === "final-check" || nodeId === "done";
-  const showAuditTrail = nodeId === "done";
 
   const approvalTier = data.approval_tier;
   const suppliers = data.supplier_shortlist ?? [];
   const excluded = data.suppliers_excluded ?? [];
   const recommendation = data.recommendation;
   const auditTrail = data.audit_trail;
+
+  // ── Shared supplier list JSX (reused in both done and other nodes) ────────
+  const supplierListJsx = (
+    <>
+      <div className="flex flex-col gap-2">
+        {suppliers.map((s) => (
+          <div
+            key={s.supplier_id}
+            className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">
+                #{s.rank} {s.supplier_name}
+              </span>
+              <div className="flex gap-1">
+                {s.preferred_supplier && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    Preferred
+                  </Badge>
+                )}
+                {s.is_incumbent && (
+                  <Badge variant="outline" className="text-[10px]">
+                    Incumbent
+                  </Badge>
+                )}
+                {!s.policy_compliant && (
+                  <Badge variant="destructive" className="text-[10px]">
+                    Non-compliant
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <Row
+              label="Total Price"
+              value={`${s.currency ?? ""} ${s.total_price?.toLocaleString()}`}
+            />
+            <Row
+              label="Lead Time"
+              value={`${s.standard_lead_time_days}d standard`}
+            />
+            <Row
+              label="Quality / Risk / ESG"
+              value={`${s.quality_score} / ${s.risk_score} / ${s.esg_score}`}
+            />
+            {s.recommendation_note && (
+              <p className="text-muted-foreground italic">
+                {s.recommendation_note}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      {excluded.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-medium text-muted-foreground mb-1.5">
+            Excluded ({excluded.length})
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {excluded.map((s) => (
+              <div
+                key={s.supplier_id}
+                className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs"
+              >
+                <span className="font-medium">{s.supplier_name}</span>
+                {s.reason && (
+                  <p className="text-muted-foreground mt-0.5">{s.reason}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <Sheet
@@ -637,299 +972,186 @@ function NodeDetailPanel({
           </div>
         </SheetHeader>
 
-        <div className="flex flex-col gap-5 px-6 py-5">
-          <div>
-            <SectionHeader
-              icon={<ShieldAlert className="h-4 w-4 text-destructive" />}
-              title="Escalations"
-            />
-            {sortedEscalations.length === 0 ? (
-              <EmptyState label="No escalations" />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {sortedEscalations.map((e) => (
-                  <div
-                    key={e.escalation_id}
-                    className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-medium text-destructive">
-                        {e.rule}
-                      </span>
-                      {e.blocking && (
-                        <Badge
-                          variant="destructive"
-                          className="text-[10px] shrink-0"
-                        >
-                          Blocking
-                        </Badge>
-                      )}
-                    </div>
-                    {e.trigger && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {e.trigger}
-                      </p>
-                    )}
-                    {e.escalate_to && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        <span className="font-medium">Escalate to:</span>{" "}
-                        {e.escalate_to}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <Separator />
-          <div>
-            <SectionHeader
-              icon={
-                <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              }
-              title="Issues"
-            />
-            {sortedIssues.length === 0 ? (
-              <EmptyState label="No issues" />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {sortedIssues.map((issue) => (
-                  <IssueCard
-                    key={issue.issue_id}
-                    issue={issue}
-                    onResolve={onResolveIssue}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-          <Separator />
-          <div>
-            <SectionHeader
-              icon={
-                <Ban className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-              }
-              title="Policy Violations"
-            />
-            {policyViolations.length === 0 ? (
-              <EmptyState label="No policy violations" />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {policyViolations.map((pv, i) => (
-                  <div
-                    key={i}
-                    className="rounded-md border border-orange-500/30 bg-orange-500/5 px-3 py-2.5"
-                  >
-                    <span className="text-xs font-medium text-orange-700 dark:text-orange-400">
-                      {pv.policy}
-                    </span>
-                    {pv.description && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {pv.description}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <Separator />
-          {showApprovalTier && approvalTier && (
-            <>
-              <div>
-                <SectionHeader
-                  icon={
-                    <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                  }
-                  title="Approval Tier"
-                />
-                <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1.5">
-                  <Row
-                    label="Tier"
-                    value={`Tier ${approvalTier.tier_number} (${approvalTier.threshold_id})`}
-                  />
-                  <Row
-                    label="Budget"
-                    value={`${approvalTier.currency} ${approvalTier.budget_amount?.toLocaleString()}`}
-                  />
-                  <Row
-                    label="Quotes Required"
-                    value={String(approvalTier.min_supplier_quotes)}
-                  />
-                  {approvalTier.approvers?.length > 0 && (
-                    <Row
-                      label="Approvers"
-                      value={approvalTier.approvers.join(", ")}
-                    />
-                  )}
-                  {approvalTier.deviation_approval_required_from?.length >
-                    0 && (
-                    <Row
-                      label="Deviation Approval"
-                      value={approvalTier.deviation_approval_required_from.join(
-                        ", ",
-                      )}
-                    />
-                  )}
-                  {approvalTier.is_boundary_case && (
-                    <Row
-                      label="Boundary Case"
-                      value={
-                        approvalTier.boundary_value != null
-                          ? `Yes (boundary: ${approvalTier.boundary_value.toLocaleString()})`
-                          : "Yes"
-                      }
-                    />
-                  )}
-                </div>
-              </div>
-              <Separator />
-            </>
-          )}
-          {showSuppliers && (
-            <>
-              <div>
-                <SectionHeader
-                  icon={
-                    <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                  }
-                  title={`Supplier Shortlist (${suppliers.length})`}
-                />
-                {suppliers.length === 0 ? (
-                  <EmptyState label="No suppliers evaluated yet" />
-                ) : (
+        {nodeId === "done" ? (
+          // ── Done node: 7-part results view ─────────────────────────────────
+          <div className="flex flex-col gap-5 px-6 py-5">
+            {/* Part 1: Escalations */}
+            {allEscalations.length > 0 && (
+              <>
+                <CollapsibleSection
+                  icon={<ShieldAlert className="h-4 w-4 text-destructive" />}
+                  title="Escalations"
+                  defaultOpen={true}
+                  count={allEscalations.length}
+                >
                   <div className="flex flex-col gap-2">
-                    {suppliers.map((s) => (
-                      <div
-                        key={s.supplier_id}
-                        className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">
-                            #{s.rank} {s.supplier_name}
-                          </span>
-                          <div className="flex gap-1">
-                            {s.preferred_supplier && (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px]"
-                              >
-                                Preferred
-                              </Badge>
-                            )}
-                            {s.is_incumbent && (
-                              <Badge variant="outline" className="text-[10px]">
-                                Incumbent
-                              </Badge>
-                            )}
-                            {!s.policy_compliant && (
+                    {[...allEscalations]
+                      .sort((a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0))
+                      .map((e) => (
+                        <div
+                          key={e.escalation_id}
+                          className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-xs font-medium text-destructive">
+                              {e.rule}
+                            </span>
+                            {e.blocking && (
                               <Badge
                                 variant="destructive"
-                                className="text-[10px]"
+                                className="text-[10px] shrink-0"
                               >
-                                Non-compliant
+                                Blocking
                               </Badge>
                             )}
                           </div>
+                          {e.trigger && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {e.trigger}
+                            </p>
+                          )}
+                          {e.escalate_to && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              <span className="font-medium">Escalate to:</span>{" "}
+                              {e.escalate_to}
+                            </p>
+                          )}
                         </div>
-                        <Row
-                          label="Total Price"
-                          value={`${s.currency ?? ""} ${s.total_price?.toLocaleString()}`}
-                        />
-                        <Row
-                          label="Lead Time"
-                          value={`${s.standard_lead_time_days}d standard`}
-                        />
-                        <Row
-                          label="Quality / Risk / ESG"
-                          value={`${s.quality_score} / ${s.risk_score} / ${s.esg_score}`}
-                        />
-                        {s.recommendation_note && (
-                          <p className="text-muted-foreground italic">
-                            {s.recommendation_note}
+                      ))}
+                  </div>
+                </CollapsibleSection>
+                <Separator />
+              </>
+            )}
+
+            {/* Part 2: Issues */}
+            {allIssues.length > 0 && (
+              <>
+                <CollapsibleSection
+                  icon={
+                    <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  }
+                  title="Issues"
+                  defaultOpen={allIssues.some((i) => i.blocking && !i.resolved)}
+                  count={allIssues.length}
+                >
+                  <div className="flex flex-col gap-2">
+                    {[...allIssues]
+                      .sort((a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0))
+                      .map((issue) => (
+                        <IssueCard key={issue.issue_id} issue={issue} />
+                      ))}
+                  </div>
+                </CollapsibleSection>
+                <Separator />
+              </>
+            )}
+
+            {/* Part 3: Policy Violations */}
+            {allPolicyViolations.length > 0 && (
+              <>
+                <CollapsibleSection
+                  icon={
+                    <Ban className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                  }
+                  title="Policy Violations"
+                  defaultOpen={false}
+                  count={allPolicyViolations.length}
+                >
+                  <div className="flex flex-col gap-2">
+                    {allPolicyViolations.map((pv, i) => (
+                      <div
+                        key={i}
+                        className="rounded-md border border-orange-500/30 bg-orange-500/5 px-3 py-2.5"
+                      >
+                        <span className="text-xs font-medium text-orange-700 dark:text-orange-400">
+                          {pv.policy}
+                        </span>
+                        {pv.description && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {pv.description}
                           </p>
                         )}
                       </div>
                     ))}
                   </div>
-                )}
-                {excluded.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                      Excluded ({excluded.length})
-                    </p>
-                    <div className="flex flex-col gap-1.5">
-                      {excluded.map((s) => (
-                        <div
-                          key={s.supplier_id}
-                          className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs"
-                        >
-                          <span className="font-medium">{s.supplier_name}</span>
-                          {s.reason && (
-                            <p className="text-muted-foreground mt-0.5">
-                              {s.reason}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <Separator />
-            </>
-          )}
-          {showRecommendation && recommendation?.status && (
-            <>
-              <div>
-                <SectionHeader
+                </CollapsibleSection>
+                <Separator />
+              </>
+            )}
+
+            {/* Part 4: AI Summary */}
+            <AiSummarySection data={data} active={open} onSummaryGenerated={onSummaryGenerated} />
+            <Separator />
+
+            {/* Part 5: Supplier Shortlist */}
+            {suppliers.length > 0 && (
+              <>
+                <CollapsibleSection
+                  icon={
+                    <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  }
+                  title="Supplier Shortlist"
+                  defaultOpen={true}
+                  count={suppliers.length}
+                >
+                  {supplierListJsx}
+                </CollapsibleSection>
+                <Separator />
+              </>
+            )}
+
+            {/* Part 6: Recommendation */}
+            {recommendation?.status && (
+              <>
+                <CollapsibleSection
                   icon={
                     <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                   }
                   title="Recommendation"
-                />
-                <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1.5">
-                  <Row label="Status" value={recommendation.status} />
-                  {recommendation.reason && (
-                    <Row label="Reason" value={recommendation.reason} />
-                  )}
-                  {recommendation.preferred_supplier_if_resolved && (
-                    <Row
-                      label="Preferred Supplier"
-                      value={recommendation.preferred_supplier_if_resolved}
-                    />
-                  )}
-                  {recommendation.preferred_supplier_rationale && (
-                    <Row
-                      label="Rationale"
-                      value={recommendation.preferred_supplier_rationale}
-                    />
-                  )}
-                  {recommendation.minimum_budget_required > 0 && (
-                    <Row
-                      label="Min. Budget"
-                      value={`${recommendation.minimum_budget_currency} ${recommendation.minimum_budget_required?.toLocaleString()}`}
-                    />
-                  )}
-                </div>
-              </div>
-              <Separator />
-            </>
-          )}
-          {showAuditTrail && auditTrail?.policies_checked?.length > 0 && (
-            <>
-              <div>
-                <SectionHeader
-                  icon={<FileText className="h-4 w-4 text-muted-foreground" />}
-                  title="Audit Trail"
-                />
+                  defaultOpen={true}
+                >
+                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1.5">
+                    <Row label="Status" value={recommendation.status} />
+                    {recommendation.reason && (
+                      <Row label="Reason" value={recommendation.reason} />
+                    )}
+                    {recommendation.preferred_supplier_if_resolved && (
+                      <Row
+                        label="Preferred Supplier"
+                        value={recommendation.preferred_supplier_if_resolved}
+                      />
+                    )}
+                    {recommendation.preferred_supplier_rationale && (
+                      <Row
+                        label="Rationale"
+                        value={recommendation.preferred_supplier_rationale}
+                      />
+                    )}
+                    {recommendation.minimum_budget_required > 0 && (
+                      <Row
+                        label="Min. Budget"
+                        value={`${recommendation.minimum_budget_currency} ${recommendation.minimum_budget_required?.toLocaleString()}`}
+                      />
+                    )}
+                  </div>
+                </CollapsibleSection>
+                <Separator />
+              </>
+            )}
+
+            {/* Part 7: Audit Trail */}
+            {auditTrail?.policies_checked?.length > 0 && (
+              <CollapsibleSection
+                icon={<FileText className="h-4 w-4 text-muted-foreground" />}
+                title="Audit Trail"
+                defaultOpen={false}
+              >
                 <div className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-xs space-y-1.5">
-                  {auditTrail.policies_checked.length > 0 && (
-                    <Row
-                      label="Policies Checked"
-                      value={auditTrail.policies_checked.join(", ")}
-                    />
-                  )}
+                  <Row
+                    label="Policies Checked"
+                    value={auditTrail.policies_checked.join(", ")}
+                  />
                   {auditTrail.pricing_tiers_applied && (
                     <Row
                       label="Pricing Tiers"
@@ -944,48 +1166,344 @@ function NodeDetailPanel({
                   )}
                   <Row
                     label="Historical Awards"
-                    value={
-                      auditTrail.historical_awards_consulted ? "Yes" : "No"
-                    }
+                    value={auditTrail.historical_awards_consulted ? "Yes" : "No"}
                   />
                   {auditTrail.historical_award_note && (
-                    <Row
-                      label="Note"
-                      value={auditTrail.historical_award_note}
-                    />
+                    <Row label="Note" value={auditTrail.historical_award_note} />
                   )}
                 </div>
-              </div>
-              <Separator />
-            </>
-          )}
-          {reasonings.length > 0 && (
-            <>
+              </CollapsibleSection>
+            )}
+          </div>
+        ) : (
+          // ── Other nodes: per-stage view ─────────────────────────────────────
+          <div className="flex flex-col gap-5 px-6 py-5">
+            {nodeId === "request-submitted" &&
+              (() => {
+                const ri = data.request_interpretation;
+                return (
+                  <div className="flex flex-col gap-4">
+                    {ri.title && (
+                      <div className="text-base font-semibold text-foreground leading-snug">
+                        {ri.title}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {ri.category_l1 && ri.category_l2 && (
+                        <Badge variant="outline">
+                          {ri.category_l1} / {ri.category_l2}
+                        </Badge>
+                      )}
+                      {ri.business_unit && (
+                        <Badge variant="outline">{ri.business_unit}</Badge>
+                      )}
+                      {(ri.city || ri.country) && (
+                        <Badge variant="outline">
+                          {[ri.city, ri.country].filter(Boolean).join(", ")}
+                        </Badge>
+                      )}
+                      {ri.contract_type_requested && (
+                        <Badge variant="outline">
+                          {ri.contract_type_requested === "purchase"
+                            ? "Purchase"
+                            : "Sell"}
+                        </Badge>
+                      )}
+                      {ri.request_language && ri.request_language !== "en" && (
+                        <Badge variant="secondary" className="uppercase">
+                          {ri.request_language}
+                        </Badge>
+                      )}
+                      {ri.esg_requirement && (
+                        <Badge
+                          variant="secondary"
+                          className="text-emerald-700 dark:text-emerald-400"
+                        >
+                          ESG Required
+                        </Badge>
+                      )}
+                      {ri.data_residency_constraint && (
+                        <Badge variant="secondary">Data Residency</Badge>
+                      )}
+                    </div>
+                    {ri.request_text && (
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground italic leading-relaxed">
+                        {ri.request_text}
+                      </div>
+                    )}
+                    <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1.5">
+                      {ri.budget_amount != null && ri.currency && (
+                        <Row
+                          label="Budget"
+                          value={`${ri.currency} ${ri.budget_amount.toLocaleString()}`}
+                        />
+                      )}
+                      {ri.quantity != null && (
+                        <Row
+                          label="Quantity"
+                          value={`${ri.quantity}${ri.unit_of_measure ? ` ${ri.unit_of_measure}` : ""}`}
+                        />
+                      )}
+                      {ri.required_by_date && (
+                        <Row label="Required By" value={ri.required_by_date} />
+                      )}
+                      {ri.preferred_supplier_mentioned && (
+                        <Row
+                          label="Preferred Supplier"
+                          value={ri.preferred_supplier_mentioned}
+                        />
+                      )}
+                      {ri.incumbent_supplier && (
+                        <Row
+                          label="Incumbent Supplier"
+                          value={ri.incumbent_supplier}
+                        />
+                      )}
+                      {ri.delivery_countries &&
+                        ri.delivery_countries.length > 0 && (
+                          <Row
+                            label="Delivery Countries"
+                            value={ri.delivery_countries.join(", ")}
+                          />
+                        )}
+                      {ri.requester_role && (
+                        <Row label="Requester Role" value={ri.requester_role} />
+                      )}
+                      {ri.days_until_required != null && (
+                        <Row
+                          label="Days Until Required"
+                          value={String(ri.days_until_required)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            {sortedEscalations.length > 0 && (
               <div>
                 <SectionHeader
-                  icon={<Info className="h-4 w-4 text-muted-foreground" />}
-                  title="Reasonings"
+                  icon={<ShieldAlert className="h-4 w-4 text-destructive" />}
+                  title="Escalations"
                 />
                 <div className="flex flex-col gap-2">
-                  {reasonings.map((r, i) => (
+                  {sortedEscalations.map((e) => (
                     <div
-                      key={r.step_id + i}
-                      className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-xs"
+                      key={e.escalation_id}
+                      className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5"
                     >
-                      <span className="font-medium text-foreground">
-                        {r.aspect}
-                      </span>
-                      <p className="text-muted-foreground mt-1">
-                        {r.reasoning}
-                      </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-xs font-medium text-destructive">
+                          {e.rule}
+                        </span>
+                        {e.blocking && (
+                          <Badge
+                            variant="destructive"
+                            className="text-[10px] shrink-0"
+                          >
+                            Blocking
+                          </Badge>
+                        )}
+                      </div>
+                      {e.trigger && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {e.trigger}
+                        </p>
+                      )}
+                      {e.escalate_to && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          <span className="font-medium">Escalate to:</span>{" "}
+                          {e.escalate_to}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
-              <Separator />
-            </>
-          )}
-        </div>
+            )}
+            {sortedEscalations.length > 0 && <Separator />}
+            {sortedIssues.length > 0 && (
+              <div>
+                <SectionHeader
+                  icon={
+                    <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  }
+                  title="Issues"
+                />
+                <div className="flex flex-col gap-2">
+                  {sortedIssues.map((issue) => (
+                    <IssueCard
+                      key={issue.issue_id}
+                      issue={issue}
+                      onResolve={onResolveIssue}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {sortedIssues.length > 0 && <Separator />}
+            {policyViolations.length > 0 && (
+              <div>
+                <SectionHeader
+                  icon={
+                    <Ban className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                  }
+                  title="Policy Violations"
+                />
+                <div className="flex flex-col gap-2">
+                  {policyViolations.map((pv, i) => (
+                    <div
+                      key={i}
+                      className="rounded-md border border-orange-500/30 bg-orange-500/5 px-3 py-2.5"
+                    >
+                      <span className="text-xs font-medium text-orange-700 dark:text-orange-400">
+                        {pv.policy}
+                      </span>
+                      {pv.description && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {pv.description}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {policyViolations.length > 0 && <Separator />}
+            {showApprovalTier && approvalTier && (
+              <>
+                <div>
+                  <SectionHeader
+                    icon={
+                      <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                    }
+                    title="Approval Tier"
+                  />
+                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1.5">
+                    <Row
+                      label="Tier"
+                      value={`Tier ${approvalTier.tier_number} (${approvalTier.threshold_id})`}
+                    />
+                    <Row
+                      label="Budget"
+                      value={`${approvalTier.currency} ${approvalTier.budget_amount?.toLocaleString()}`}
+                    />
+                    <Row
+                      label="Quotes Required"
+                      value={String(approvalTier.min_supplier_quotes)}
+                    />
+                    {approvalTier.approvers?.length > 0 && (
+                      <Row
+                        label="Approvers"
+                        value={approvalTier.approvers.join(", ")}
+                      />
+                    )}
+                    {approvalTier.deviation_approval_required_from?.length >
+                      0 && (
+                      <Row
+                        label="Deviation Approval"
+                        value={approvalTier.deviation_approval_required_from.join(
+                          ", ",
+                        )}
+                      />
+                    )}
+                    {approvalTier.is_boundary_case && (
+                      <Row
+                        label="Boundary Case"
+                        value={
+                          approvalTier.boundary_value != null
+                            ? `Yes (boundary: ${approvalTier.boundary_value.toLocaleString()})`
+                            : "Yes"
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+            {showSuppliers && (
+              <>
+                <div>
+                  <SectionHeader
+                    icon={
+                      <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                    }
+                    title={`Supplier Shortlist (${suppliers.length})`}
+                  />
+                  {suppliers.length === 0 ? (
+                    <EmptyState label="No suppliers evaluated yet" />
+                  ) : (
+                    supplierListJsx
+                  )}
+                </div>
+                <Separator />
+              </>
+            )}
+            {showRecommendation && recommendation?.status && (
+              <>
+                <div>
+                  <SectionHeader
+                    icon={
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    }
+                    title="Recommendation"
+                  />
+                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1.5">
+                    <Row label="Status" value={recommendation.status} />
+                    {recommendation.reason && (
+                      <Row label="Reason" value={recommendation.reason} />
+                    )}
+                    {recommendation.preferred_supplier_if_resolved && (
+                      <Row
+                        label="Preferred Supplier"
+                        value={recommendation.preferred_supplier_if_resolved}
+                      />
+                    )}
+                    {recommendation.preferred_supplier_rationale && (
+                      <Row
+                        label="Rationale"
+                        value={recommendation.preferred_supplier_rationale}
+                      />
+                    )}
+                    {recommendation.minimum_budget_required > 0 && (
+                      <Row
+                        label="Min. Budget"
+                        value={`${recommendation.minimum_budget_currency} ${recommendation.minimum_budget_required?.toLocaleString()}`}
+                      />
+                    )}
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+            {reasonings.length > 0 && (
+              <>
+                <div>
+                  <SectionHeader
+                    icon={<Info className="h-4 w-4 text-muted-foreground" />}
+                    title="Reasonings"
+                  />
+                  <div className="flex flex-col gap-2">
+                    {reasonings.map((r, i) => (
+                      <div
+                        key={r.step_id + i}
+                        className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-xs"
+                      >
+                        <span className="font-medium text-foreground">
+                          {r.aspect}
+                        </span>
+                        <p className="text-muted-foreground mt-1">
+                          {r.reasoning}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
@@ -1000,6 +1518,7 @@ export function PipelineGraphView({
   mode,
   onApprove,
   onResolveIssue,
+  onSummaryGenerated,
 }: {
   nodeStatuses: NodeStatuses;
   requestData: RequestData;
@@ -1007,6 +1526,7 @@ export function PipelineGraphView({
   mode?: OrchestratorMode;
   onApprove?: () => Promise<void>;
   onResolveIssue?: (stageKey: string, issueId: string) => Promise<void>;
+  onSummaryGenerated?: (summary: string) => void;
 }) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -1086,7 +1606,7 @@ export function PipelineGraphView({
   const onInit = useCallback((instance: ReactFlowInstance) => {
     instance.fitView({
       nodes: [{ id: "request-submitted" }],
-      padding: 2,
+      padding: 3,
       maxZoom: 3,
       duration: 0,
     });
@@ -1188,8 +1708,8 @@ export function PipelineGraphView({
           zoomOnScroll={false}
           zoomActivationKeyCode="Control"
           translateExtent={[
-            [-100, -100], // Top-left min bounds (x1, y1)
-            [1000, 2300], // Bottom-right max bounds (x2, y2)
+            [-500, -100], // Top-left min bounds (x1, y1)
+            [1200, 2300], // Bottom-right max bounds (x2, y2)
           ]}
           preventScrolling={false}
         >
@@ -1217,6 +1737,7 @@ export function PipelineGraphView({
               }
             : undefined
         }
+        onSummaryGenerated={onSummaryGenerated}
       />
     </div>
   );
