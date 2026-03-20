@@ -103,32 +103,15 @@ function matchesTargets(escalateTo: string | undefined, targets: string[], exclu
 }
 
 function runHasEscalationFor(run: RunRow, targets: string[], excludeTargets: string[] = []): boolean {
-  if (targets.length === 0 && excludeTargets.length === 0) return true
-
-  // For completed runs awaiting senior sign-off, check all signals
-  if (run.status === "final_check_complete" || run.status === "done") {
-    // 1. deviation_approval_required_from on the tier
-    const deviationApprovers: string[] = run.context_payload?.approval_tier?.deviation_approval_required_from ?? []
-    if (deviationApprovers.some((a) => matchesTargets(a, targets, excludeTargets))) return true
-
-    // 2. Non-blocking escalations (approval_tier stage writes these for tier 3/4/5)
-    if (run.context_payload?.stages) {
-      for (const stage of Object.values(run.context_payload.stages)) {
-        for (const e of stage.escalations ?? []) {
-          if (matchesTargets(e.escalate_to, targets, excludeTargets)) return true
-        }
-      }
-    }
-  }
-
+  if (run.status === "done" || run.status === "aborted") return false
   if (!run.context_payload?.stages) return false
   for (const stage of Object.values(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
-      if (!e.blocking) continue
+      if (e.acknowledged) continue
       if (matchesTargets(e.escalate_to, targets, excludeTargets)) return true
     }
     for (const i of stage.issues ?? []) {
-      if (!i.blocking) continue
+      if (i.resolved) continue
       if (matchesTargets(i.escalate_to, targets, excludeTargets)) return true
     }
   }
@@ -136,56 +119,19 @@ function runHasEscalationFor(run: RunRow, targets: string[], excludeTargets: str
 }
 
 function getRoleEscalations(run: RunRow, targets: string[], excludeTargets: string[] = []) {
-  const result: { stageKey: string; stageLabel: string; rule?: string; trigger: string; escalate_to: string; blocking: boolean; isFinalApproval?: boolean }[] = []
-
-  // For completed runs awaiting senior sign-off, surface the approval requirement
-  if (run.status === "final_check_complete" || run.status === "done") {
-    const tier = run.context_payload?.approval_tier
-    const deviationApprovers: string[] = tier?.deviation_approval_required_from ?? []
-    const tierNum = tier?.tier_number
-
-    // Find the non-blocking approval_tier escalation targeting this role
-    let approvalTarget = deviationApprovers.join(", ")
-    let approvalTrigger = ""
-    if (run.context_payload?.stages) {
-      for (const stage of Object.values(run.context_payload.stages)) {
-        for (const e of stage.escalations ?? []) {
-          if (matchesTargets(e.escalate_to, targets, excludeTargets)) {
-            approvalTarget = e.escalate_to
-            approvalTrigger = e.trigger
-          }
-        }
-      }
-    }
-
-    const matched = deviationApprovers.some((a) => matchesTargets(a, targets, excludeTargets))
-      || !!approvalTrigger
-
-    if (targets.length === 0 || matched) {
-      result.push({
-        stageKey: "final_check",
-        stageLabel: "Final Check",
-        trigger: approvalTrigger
-          || `Procurement pipeline completed. Final approval required from ${approvalTarget}${tierNum ? ` (Approval Tier ${tierNum})` : ""} before this request can be awarded.`,
-        escalate_to: approvalTarget || targets.join(", "),
-        blocking: true,
-        isFinalApproval: true,
-      })
-    }
-  }
-
+  const result: { stageKey: string; stageLabel: string; rule?: string; trigger: string; escalate_to: string; blocking: boolean; itemId: string; itemType: "escalation" | "issue" }[] = []
   if (!run.context_payload?.stages) return result
   for (const [stageKey, stage] of Object.entries(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
-      if (!e.blocking) continue
+      if (e.acknowledged) continue
       if (matchesTargets(e.escalate_to, targets, excludeTargets)) {
-        result.push({ stageKey, stageLabel: STAGE_LABELS[stageKey] ?? stageKey, rule: e.rule, trigger: e.trigger, escalate_to: e.escalate_to, blocking: true })
+        result.push({ stageKey, stageLabel: STAGE_LABELS[stageKey] ?? stageKey, rule: e.rule, trigger: e.trigger, escalate_to: e.escalate_to, blocking: e.blocking, itemId: e.escalation_id, itemType: "escalation" })
       }
     }
     for (const i of stage.issues ?? []) {
-      if (!i.blocking) continue
+      if (i.resolved) continue
       if (matchesTargets(i.escalate_to, targets, excludeTargets)) {
-        result.push({ stageKey, stageLabel: STAGE_LABELS[stageKey] ?? stageKey, trigger: i.trigger, escalate_to: i.escalate_to, blocking: true })
+        result.push({ stageKey, stageLabel: STAGE_LABELS[stageKey] ?? stageKey, trigger: i.trigger, escalate_to: i.escalate_to, blocking: i.blocking, itemId: i.issue_id, itemType: "issue" })
       }
     }
   }
@@ -269,9 +215,10 @@ function EscalationReportCard({
   roleLabel: string
   onAbort: (runId: string) => void
 }) {
-  const { approveAndResume } = useRequestStore()
-  const [resolving, setResolving] = useState(false)
-  const [aborting, setAborting]   = useState(false)
+  const { approveAndResume, acknowledgeItem } = useRequestStore()
+  const [resolving, setResolving]       = useState(false)
+  const [aborting, setAborting]         = useState(false)
+  const [acknowledging, setAcknowledging] = useState<string | null>(null)
 
   const data = run.context_payload ?? createRequestData()
   const interp = data.request_interpretation
@@ -361,46 +308,65 @@ function EscalationReportCard({
           ) : (
             <div className="flex flex-col gap-2">
               {myEscalations.map((e, i) => (
-                <div key={i} className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+                <div key={i} className={`rounded-md border px-3 py-2.5 ${e.blocking ? "border-destructive/20 bg-destructive/5" : "border-amber-500/20 bg-amber-500/5"}`}>
                   <div className="flex items-start gap-3">
-                    <ShieldAlert className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                    <ShieldAlert className={`h-4 w-4 shrink-0 mt-0.5 ${e.blocking ? "text-destructive" : "text-amber-500"}`} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
                         {e.rule && (
                           <span className="font-mono text-[11px] font-semibold bg-muted rounded px-1.5 py-0.5 text-muted-foreground">{e.rule}</span>
                         )}
                         <span className="text-[11px] text-muted-foreground">{e.stageLabel}</span>
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${e.blocking ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"}`}>
+                          {e.blocking ? "Blocking" : "Advisory"}
+                        </span>
                       </div>
                       <p className="text-sm text-foreground leading-snug">{e.trigger}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Target: <span className="font-medium text-foreground">{e.escalate_to}</span></p>
                     </div>
                   </div>
-                  {/* Actions — only shown on the first escalation row to avoid repeating per-run actions */}
-                  {i === 0 && (
-                    <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-destructive/10">
+                  <div className={`flex items-center gap-2 mt-3 pt-2.5 border-t ${e.blocking ? "border-destructive/10" : "border-amber-500/10"}`}>
+                    {e.blocking ? (
+                      <>
+                        {i === 0 && (
+                          <>
+                            <button
+                              onClick={handleResolve}
+                              disabled={actionBusy}
+                              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                            >
+                              {resolving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="h-3.5 w-3.5" />}
+                              {resolving ? "Resolving…" : "Resolve & Resume"}
+                            </button>
+                            <button
+                              onClick={handleAbort}
+                              disabled={actionBusy}
+                              className="flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50 transition-colors"
+                            >
+                              {aborting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+                              {aborting ? "Aborting…" : "Abort"}
+                            </button>
+                            <span className="text-[11px] text-muted-foreground ml-1">
+                              Resolve resumes the pipeline · Abort permanently deletes this request
+                            </span>
+                          </>
+                        )}
+                      </>
+                    ) : (
                       <button
-                        onClick={handleResolve}
-                        disabled={actionBusy}
-                        className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                        onClick={async () => {
+                          setAcknowledging(e.itemId)
+                          try { await acknowledgeItem(run.id, data, e.stageKey, e.itemType, e.itemId) }
+                          finally { setAcknowledging(null) }
+                        }}
+                        disabled={acknowledging === e.itemId || actionBusy}
+                        className="flex items-center gap-1.5 rounded-md border border-muted-foreground/30 bg-muted/50 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
                       >
-                        {resolving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="h-3.5 w-3.5" />}
-                        {resolving ? (isFinalApproval ? "Approving…" : "Resolving…") : (isFinalApproval ? "Approve" : "Resolve")}
+                        {acknowledging === e.itemId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="h-3.5 w-3.5" />}
+                        {acknowledging === e.itemId ? "Acknowledging…" : "Acknowledge"}
                       </button>
-                      <button
-                        onClick={handleAbort}
-                        disabled={actionBusy}
-                        className="flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50 transition-colors"
-                      >
-                        {aborting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
-                        {aborting ? "Aborting…" : "Abort"}
-                      </button>
-                      <span className="text-[11px] text-muted-foreground ml-1">
-                        {isFinalApproval
-                          ? "Approve marks this procurement as awarded · Abort permanently deletes this request"
-                          : "Resolve resumes the procurement pipeline · Abort permanently deletes this request"}
-                      </span>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

@@ -57,9 +57,10 @@ function countIssues(run: RunRow) {
   let warnings = 0, escalations = 0
   if (run.context_payload?.stages) {
     for (const stage of Object.values(run.context_payload.stages)) {
-      escalations += (stage.escalations?.filter((e) => e.blocking).length ?? 0)
-                + (stage.issues?.filter((i) => i.blocking).length ?? 0)
-      warnings    += stage.issues?.filter((i) => !i.blocking).length ?? 0
+      escalations += (stage.escalations?.filter((e) => e.blocking && !e.acknowledged).length ?? 0)
+                + (stage.issues?.filter((i) => i.blocking && !i.resolved).length ?? 0)
+      warnings    += (stage.escalations?.filter((e) => !e.blocking && !e.acknowledged).length ?? 0)
+                + (stage.issues?.filter((i) => !i.blocking && !i.resolved).length ?? 0)
     }
   }
   return { warnings, escalations }
@@ -307,11 +308,23 @@ function GraphHeader({ run, onBack }: { run: RunRow; onBack: () => void }) {
 // ── Escalation info card ──────────────────────────────────────────────────────
 
 function EscalationInfoCard({ requestData }: { requestData: RequestData }) {
-  const escalations = Object.values(requestData.stages).flatMap((s) => s.escalations ?? [])
-  if (escalations.length === 0) return null
+  const escalations = Object.values(requestData.stages)
+    .flatMap((s) => s.escalations ?? [])
+    .filter((e) => !e.acknowledged)
+  const issues = Object.values(requestData.stages)
+    .flatMap((s) => s.issues ?? [])
+    .filter((i) => !i.resolved)
 
-  const blocking    = escalations.filter((e) => e.blocking)
-  const advisory    = escalations.filter((e) => !e.blocking)
+  if (escalations.length === 0 && issues.length === 0) return null
+
+  const blocking    = [
+    ...escalations.filter((e) => e.blocking),
+    ...issues.filter((i) => i.blocking),
+  ]
+  const advisory    = [
+    ...escalations.filter((e) => !e.blocking),
+    ...issues.filter((i) => !i.blocking),
+  ]
 
   return (
     <div className="w-full border-b border-border bg-destructive/5 px-6 py-3 shrink-0">
@@ -327,21 +340,23 @@ function EscalationInfoCard({ requestData }: { requestData: RequestData }) {
         )}
       </div>
       <div className="flex flex-col gap-1.5">
-        {escalations.sort((esc1) => esc1.blocking ? -1 : 1).map((e) => (
-          <div
-            key={e.escalation_id}
-            className="flex items-start gap-3 rounded-md border bg-background px-3 py-2"
-          >
-            <span className={`mt-1.25 inline-flex h-2 w-2 shrink-0 rounded-full ${e.blocking ? "bg-destructive" : "bg-amber-500"}`} />
-            <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
-              <span className="font-mono text-[11px] font-semibold text-muted-foreground shrink-0">{e.rule}</span>
-              <span className="text-xs text-foreground leading-snug">{e.trigger}</span>
+        {[...blocking, ...advisory].map((item) => {
+          const id        = "escalation_id" in item ? item.escalation_id : item.issue_id
+          const label     = "rule" in item ? item.rule : item.issue_id
+          const isBlk     = item.blocking
+          return (
+            <div key={id} className="flex items-start gap-3 rounded-md border bg-background px-3 py-2">
+              <span className={`mt-1.25 inline-flex h-2 w-2 shrink-0 rounded-full ${isBlk ? "bg-destructive" : "bg-amber-500"}`} />
+              <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
+                <span className="font-mono text-[11px] font-semibold text-muted-foreground shrink-0">{label}</span>
+                <span className="text-xs text-foreground leading-snug">{item.trigger}</span>
+              </div>
+              <span className="text-[11px] text-muted-foreground shrink-0 whitespace-nowrap">
+                → <span className="font-medium text-foreground">{item.escalate_to}</span>
+              </span>
             </div>
-            <span className="text-[11px] text-muted-foreground shrink-0 whitespace-nowrap">
-              → <span className="font-medium text-foreground">{e.escalate_to}</span>
-            </span>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -506,7 +521,7 @@ export function RunsListPage({
 }) {
   const isEscalationMode = escalateTo !== undefined
 
-  const { approveAndResume, resolveIssue } = useRequestStore()
+  const { approveAndResume, resolveIssue, acknowledgeItem } = useRequestStore()
   const [roleLabel, setRoleLabel] = useState<string | null>(null)
   useEffect(() => {
     fetch("/api/session").then(r => r.json()).then((d: { roleLabel: string | null }) => setRoleLabel(d.roleLabel)).catch(() => null)

@@ -17,6 +17,7 @@ export type Escalation = {
   trigger: string;
   escalate_to: string;
   blocking: boolean;
+  acknowledged?: boolean;
 };
 
 export type Reasoning = {
@@ -243,6 +244,7 @@ export type RequestData = {
   suppliers_excluded: { supplier_id: string; supplier_name: string; reason: string }[];
   recommendation: { status: string; reason: string; preferred_supplier_if_resolved: string; preferred_supplier_rationale: string; minimum_budget_required: number; minimum_budget_currency: string };
   audit_trail: { policies_checked: string[]; supplier_ids_evaluated: string[]; pricing_tiers_applied: string; data_sources_used: string[]; historical_awards_consulted: boolean; historical_award_note: string };
+  ai_summary?: string;
 };
 
 // Patch type: stages is partial so a single node can update just its own slot

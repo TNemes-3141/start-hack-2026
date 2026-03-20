@@ -32,6 +32,9 @@ import {
   ThumbsUp,
   UserCheck,
   CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import type { PipelineNodeStatus, NodeStatuses } from "@/lib/pipeline-graph";
 import type { OrchestratorMode } from "@/hooks/use-rag-orchestrator";
@@ -307,7 +310,7 @@ const nodeLabels: Record<NodeId, string> = {
   "re-evaluate-tier": "Re-evaluate Tier from Quote",
   "scoring-ranking": "Scoring and Ranking",
   "final-check": "Final Check",
-  done: "Done",
+  done: "Results",
 };
 
 const nodeDefinitions: Omit<Node, "data">[] = [
@@ -440,6 +443,14 @@ function SectionHeader({
   );
 }
 
+function SubsectionHeader({ title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <span className="text-xs font-semibold text-foreground">{title}</span>
+    </div>
+  );
+}
+
 function EmptyState({ label }: { label: string }) {
   return <p className="text-xs text-muted-foreground italic">{label}</p>;
 }
@@ -456,11 +467,14 @@ function Row({ label, value }: { label: string; value: string }) {
 function IssueCard({
   issue,
   onResolve,
+  onAcknowledge,
 }: {
   issue: import("@/lib/request-data").Issue;
   onResolve?: (issueId: string) => Promise<void>;
+  onAcknowledge?: (issueId: string) => Promise<void>;
 }) {
   const [resolving, setResolving] = useState(false);
+  const [acknowledging, setAcknowledging] = useState(false);
   const isResolved = issue.resolved === true;
   const isBlocking = issue.blocking && !isResolved;
 
@@ -522,29 +536,327 @@ function IssueCard({
         </div>
       )}
 
-      {/* Resolve button — only for blocking, unresolved issues when callback provided */}
+      {/* Resolve button — blocking unresolved issues */}
       {isBlocking && onResolve && (
         <button
           onClick={async () => {
             setResolving(true);
-            try {
-              await onResolve(issue.issue_id);
-            } finally {
-              setResolving(false);
-            }
+            try { await onResolve(issue.issue_id); } finally { setResolving(false); }
           }}
           disabled={resolving}
           className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <CheckCheck className="h-3.5 w-3.5" />
-          {resolving
-            ? "Resolving…"
-            : `Resolve — ${issue.escalate_to ?? "Approver"}`}
+          {resolving ? "Resolving…" : `Resolve — ${issue.escalate_to ?? "Approver"}`}
+        </button>
+      )}
+      {/* Acknowledge button — advisory (non-blocking) unresolved issues */}
+      {!isBlocking && !isResolved && onAcknowledge && (
+        <button
+          onClick={async () => {
+            setAcknowledging(true);
+            try { await onAcknowledge(issue.issue_id); } finally { setAcknowledging(false); }
+          }}
+          disabled={acknowledging}
+          className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+          {acknowledging ? "Acknowledging…" : `Acknowledge — ${issue.escalate_to ?? "Reviewer"}`}
         </button>
       )}
     </div>
   );
 }
+
+function EscalationCard({
+  escalation,
+  onAcknowledge,
+}: {
+  escalation: import("@/lib/request-data").Escalation;
+  onAcknowledge?: (escalationId: string) => Promise<void>;
+}) {
+  const [acknowledging, setAcknowledging] = useState(false);
+  const isAcknowledged = escalation.acknowledged === true;
+
+  return (
+    <div className={`rounded-md border px-3 py-2.5 ${isAcknowledged ? "border-emerald-500/30 bg-emerald-500/5" : escalation.blocking ? "border-destructive/30 bg-destructive/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <span className={`text-xs font-medium ${escalation.blocking ? "text-destructive" : "text-amber-700 dark:text-amber-400"}`}>
+          {escalation.rule}
+        </span>
+        {isAcknowledged ? (
+          <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-600 gap-1 shrink-0">
+            <CheckCheck className="h-2.5 w-2.5" />
+            Acknowledged
+          </Badge>
+        ) : escalation.blocking ? (
+          <Badge variant="destructive" className="text-[10px] shrink-0">Blocking</Badge>
+        ) : (
+          <Badge variant="secondary" className="text-[10px] shrink-0">Advisory</Badge>
+        )}
+      </div>
+      {escalation.trigger && (
+        <p className="text-xs text-muted-foreground mt-1">{escalation.trigger}</p>
+      )}
+      {escalation.escalate_to && (
+        <p className="text-xs text-muted-foreground mt-0.5">
+          <span className="font-medium">Escalate to:</span> {escalation.escalate_to}
+        </p>
+      )}
+      {!escalation.blocking && !isAcknowledged && onAcknowledge && (
+        <button
+          onClick={async () => {
+            setAcknowledging(true);
+            try { await onAcknowledge(escalation.escalation_id); } finally { setAcknowledging(false); }
+          }}
+          disabled={acknowledging}
+          className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+          {acknowledging ? "Acknowledging…" : `Acknowledge — ${escalation.escalate_to ?? "Reviewer"}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Collapsible section ───────────────────────────────────────────────────────
+
+function CollapsibleSection({
+  icon,
+  title,
+  defaultOpen,
+  count,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  defaultOpen: boolean;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center justify-between w-full gap-2 mb-2 group"
+      >
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="text-sm font-semibold text-foreground">{title}</span>
+          {count != null && (
+            <Badge variant="secondary" className="text-[10px] tabular-nums">
+              {count}
+            </Badge>
+          )}
+        </div>
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        )}
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+// ── Simple inline markdown renderer ──────────────────────────────────────────
+
+function renderInlineMarkdown(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    if (match[2] != null) parts.push(<strong key={key++}>{match[2]}</strong>);
+    else if (match[3] != null) parts.push(<em key={key++}>{match[3]}</em>);
+    else if (match[4] != null)
+      parts.push(
+        <code key={key++} className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+          {match[4]}
+        </code>,
+      );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // Fenced code block
+    if (line.startsWith("```")) {
+      line.slice(3); // lang hint (unused)
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      nodes.push(
+        <pre key={key++} className="rounded-md bg-muted px-3 py-2 overflow-x-auto">
+          <code className="text-[10px] font-mono">{codeLines.join("\n")}</code>
+        </pre>,
+      );
+      i++; // skip closing ```
+      continue;
+    }
+    // H3
+    if (line.startsWith("### ")) {
+      nodes.push(
+        <h3 key={key++} className="text-xs font-bold text-foreground mt-2 mb-0.5">
+          {renderInlineMarkdown(line.slice(4))}
+        </h3>,
+      );
+      i++;
+      continue;
+    }
+    // H2
+    if (line.startsWith("## ")) {
+      nodes.push(
+        <h2 key={key++} className="text-xs font-bold text-foreground mt-2 mb-0.5 uppercase tracking-wide">
+          {renderInlineMarkdown(line.slice(3))}
+        </h2>,
+      );
+      i++;
+      continue;
+    }
+    // H1
+    if (line.startsWith("# ")) {
+      nodes.push(
+        <h1 key={key++} className="text-xs font-bold text-foreground mt-2 mb-1">
+          {renderInlineMarkdown(line.slice(2))}
+        </h1>,
+      );
+      i++;
+      continue;
+    }
+    // Unordered list item
+    if (/^[-*] /.test(line)) {
+      const items: React.ReactNode[] = [];
+      while (i < lines.length && /^[-*] /.test(lines[i])) {
+        items.push(
+          <li key={i} className="ml-3 list-disc">
+            {renderInlineMarkdown(lines[i].slice(2))}
+          </li>,
+        );
+        i++;
+      }
+      nodes.push(
+        <ul key={key++} className="flex flex-col gap-0.5 my-1">
+          {items}
+        </ul>,
+      );
+      continue;
+    }
+    // Ordered list item
+    if (/^\d+\. /.test(line)) {
+      const items: React.ReactNode[] = [];
+      while (i < lines.length && /^\d+\. /.test(lines[i])) {
+        items.push(
+          <li key={i} className="ml-3 list-decimal">
+            {renderInlineMarkdown(lines[i].replace(/^\d+\. /, ""))}
+          </li>,
+        );
+        i++;
+      }
+      nodes.push(
+        <ol key={key++} className="flex flex-col gap-0.5 my-1">
+          {items}
+        </ol>,
+      );
+      continue;
+    }
+    // Blank line
+    if (line.trim() === "") {
+      nodes.push(<div key={key++} className="h-1.5" />);
+      i++;
+      continue;
+    }
+    // Paragraph
+    nodes.push(
+      <p key={key++} className="leading-relaxed">
+        {renderInlineMarkdown(line)}
+      </p>,
+    );
+    i++;
+  }
+  return (
+    <div className="text-xs text-muted-foreground flex flex-col gap-0.5">
+      {nodes}
+    </div>
+  );
+}
+
+// ── AI summary section ────────────────────────────────────────────────────────
+
+function AiSummarySection({
+  data,
+  active,
+  onSummaryGenerated,
+}: {
+  data: RequestData;
+  active: boolean;
+  onSummaryGenerated?: (summary: string) => void;
+}) {
+  const [summary, setSummary] = useState<string | null>(data.ai_summary ?? null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fetchedFor = useRef<string | null>(data.ai_summary ? data.request_id : null);
+
+  useEffect(() => {
+    if (!active) return;
+    if (fetchedFor.current === data.request_id) return;
+    fetchedFor.current = data.request_id;
+    setLoading(true);
+    setSummary(null);
+    setError(null);
+    fetch("/api/procurement-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestData: data }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        setSummary(j.summary);
+        onSummaryGenerated?.(j.summary);
+      })
+      .catch(() => setError("Failed to generate summary."))
+      .finally(() => setLoading(false));
+  }, [active, data, onSummaryGenerated]);
+
+  return (
+    <CollapsibleSection
+      icon={<Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />}
+      title="AI Summary"
+      defaultOpen={true}
+    >
+      {loading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Generating summary…
+        </div>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {summary && (
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5">
+          <MarkdownContent content={summary} />
+        </div>
+      )}
+    </CollapsibleSection>
+  );
+}
+
+// ── Node detail panel ─────────────────────────────────────────────────────────
 
 function NodeDetailPanel({
   nodeId,
@@ -553,6 +865,8 @@ function NodeDetailPanel({
   open,
   onClose,
   onResolveIssue,
+  onAcknowledgeItem,
+  onSummaryGenerated,
 }: {
   nodeId: NodeId;
   status: PipelineNodeStatus;
@@ -560,9 +874,13 @@ function NodeDetailPanel({
   open: boolean;
   onClose: () => void;
   onResolveIssue?: (issueId: string) => Promise<void>;
+  onAcknowledgeItem?: (type: "issue" | "escalation", itemId: string) => Promise<void>;
+  onSummaryGenerated?: (summary: string) => void;
 }) {
   const label = nodeLabels[nodeId];
   const { icon } = statusConfig[status];
+
+  console.log("request", data)
 
   const stageKey = nodeToStageId[nodeId];
   const stageData = stageKey
@@ -601,16 +919,89 @@ function NodeDetailPanel({
     "pricing-calculation",
     "scoring-ranking",
     "final-check",
-    "done",
+    "done"
   ].includes(nodeId);
   const showRecommendation = nodeId === "final-check" || nodeId === "done";
-  const showAuditTrail = nodeId === "done";
 
   const approvalTier = data.approval_tier;
   const suppliers = data.supplier_shortlist ?? [];
   const excluded = data.suppliers_excluded ?? [];
   const recommendation = data.recommendation;
   const auditTrail = data.audit_trail;
+
+  // ── Shared supplier list JSX (reused in both done and other nodes) ────────
+  const supplierListJsx = (
+    <>
+      <div className="flex flex-col gap-2">
+        {suppliers.map((s) => (
+          <div
+            key={s.supplier_id}
+            className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs space-y-1"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">
+                #{s.rank} {s.supplier_name}
+              </span>
+              <div className="flex gap-1">
+                {s.preferred_supplier && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    Preferred
+                  </Badge>
+                )}
+                {s.is_incumbent && (
+                  <Badge variant="outline" className="text-[10px]">
+                    Incumbent
+                  </Badge>
+                )}
+                {!s.policy_compliant && (
+                  <Badge variant="destructive" className="text-[10px]">
+                    Non-compliant
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <Row
+              label="Total Price"
+              value={`${s.currency ?? ""} ${s.total_price?.toLocaleString()}`}
+            />
+            <Row
+              label="Lead Time"
+              value={`${s.standard_lead_time_days}d standard`}
+            />
+            <Row
+              label="Quality / Risk / ESG"
+              value={`${s.quality_score} / ${s.risk_score} / ${s.esg_score}`}
+            />
+            {s.recommendation_note && (
+              <p className="text-muted-foreground italic">
+                {s.recommendation_note}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      {excluded.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-medium text-muted-foreground mb-1.5">
+            Excluded ({excluded.length})
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {excluded.map((s) => (
+              <div
+                key={s.supplier_id}
+                className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs"
+              >
+                <span className="font-medium">{s.supplier_name}</span>
+                {s.reason && (
+                  <p className="text-muted-foreground mt-0.5">{s.reason}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <Sheet
@@ -648,35 +1039,11 @@ function NodeDetailPanel({
             ) : (
               <div className="flex flex-col gap-2">
                 {sortedEscalations.map((e) => (
-                  <div
+                  <EscalationCard
                     key={e.escalation_id}
-                    className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-medium text-destructive">
-                        {e.rule}
-                      </span>
-                      {e.blocking && (
-                        <Badge
-                          variant="destructive"
-                          className="text-[10px] shrink-0"
-                        >
-                          Blocking
-                        </Badge>
-                      )}
-                    </div>
-                    {e.trigger && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {e.trigger}
-                      </p>
-                    )}
-                    {e.escalate_to && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        <span className="font-medium">Escalate to:</span>{" "}
-                        {e.escalate_to}
-                      </p>
-                    )}
-                  </div>
+                    escalation={e}
+                    onAcknowledge={onAcknowledgeItem ? (id) => onAcknowledgeItem("escalation", id) : undefined}
+                  />
                 ))}
               </div>
             )}
@@ -698,6 +1065,7 @@ function NodeDetailPanel({
                     key={issue.issue_id}
                     issue={issue}
                     onResolve={onResolveIssue}
+                    onAcknowledge={onAcknowledgeItem ? (id) => onAcknowledgeItem("issue", id) : undefined}
                   />
                 ))}
               </div>
@@ -916,7 +1284,7 @@ function NodeDetailPanel({
               <Separator />
             </>
           )}
-          {showAuditTrail && auditTrail?.policies_checked?.length > 0 && (
+          {auditTrail?.policies_checked?.length > 0 && (
             <>
               <div>
                 <SectionHeader
@@ -985,6 +1353,11 @@ function NodeDetailPanel({
               <Separator />
             </>
           )}
+          <AiSummarySection
+            data={data}
+            active={open && nodeId === "done"}
+            onSummaryGenerated={onSummaryGenerated}
+          />
         </div>
       </SheetContent>
     </Sheet>
@@ -1000,6 +1373,8 @@ export function PipelineGraphView({
   mode,
   onApprove,
   onResolveIssue,
+  onAcknowledgeItem,
+  onSummaryGenerated,
 }: {
   nodeStatuses: NodeStatuses;
   requestData: RequestData;
@@ -1007,6 +1382,8 @@ export function PipelineGraphView({
   mode?: OrchestratorMode;
   onApprove?: () => Promise<void>;
   onResolveIssue?: (stageKey: string, issueId: string) => Promise<void>;
+  onAcknowledgeItem?: (stageKey: string, type: "issue" | "escalation", itemId: string) => Promise<void>;
+  onSummaryGenerated?: (summary: string) => void;
 }) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -1100,28 +1477,28 @@ export function PipelineGraphView({
   const onInit = useCallback((instance: ReactFlowInstance) => {
     instance.fitView({
       nodes: [{ id: "request-submitted" }],
-      padding: 2,
+      padding: 3,
       maxZoom: 3,
       duration: 0,
     });
   }, []);
 
-  // Derive blocked state: any stage has a blocking escalation or issue
+  // Derive blocked state: any stage has an unacknowledged blocking escalation or unresolved blocking issue
   const isBlocked =
     !isPipelineRunning &&
     Object.values(requestData.stages).some(
       (s) =>
-        s.escalations?.some((e) => e.blocking) ||
-        s.issues?.some((i) => i.blocking),
+        s.escalations?.some((e) => e.blocking && !e.acknowledged) ||
+        s.issues?.some((i) => i.blocking && !i.resolved),
     );
 
-  // First blocking escalation for the banner description
+  // First active blocking item for the banner description
   const firstBlockingEscalation = Object.values(requestData.stages)
     .flatMap((s) => s.escalations ?? [])
-    .find((e) => e.blocking);
+    .find((e) => e.blocking && !e.acknowledged);
   const firstBlockingIssue = Object.values(requestData.stages)
     .flatMap((s) => s.issues ?? [])
-    .find((i) => i.blocking);
+    .find((i) => i.blocking && !i.resolved);
   const blockingTrigger =
     firstBlockingEscalation?.trigger ??
     firstBlockingIssue?.trigger ??
@@ -1202,8 +1579,8 @@ export function PipelineGraphView({
           zoomOnScroll={false}
           zoomActivationKeyCode="Control"
           translateExtent={[
-            [-100, -100], // Top-left min bounds (x1, y1)
-            [1000, 2300], // Bottom-right max bounds (x2, y2)
+            [-500, -100], // Top-left min bounds (x1, y1)
+            [1200, 2300], // Bottom-right max bounds (x2, y2)
           ]}
           preventScrolling={false}
         >
@@ -1223,14 +1600,20 @@ export function PipelineGraphView({
         onResolveIssue={
           onResolveIssue
             ? (issueId) => {
-                const stageKey =
-                  nodeToStageId[lastNodeId.current ?? "request-submitted"];
-                return stageKey
-                  ? onResolveIssue(stageKey, issueId)
-                  : Promise.resolve();
+                const stageKey = nodeToStageId[lastNodeId.current ?? "request-submitted"];
+                return stageKey ? onResolveIssue(stageKey, issueId) : Promise.resolve();
               }
             : undefined
         }
+        onAcknowledgeItem={
+          onAcknowledgeItem
+            ? (type, itemId) => {
+                const stageKey = nodeToStageId[lastNodeId.current ?? "request-submitted"];
+                return stageKey ? onAcknowledgeItem(stageKey, type, itemId) : Promise.resolve();
+              }
+            : undefined
+        }
+        onSummaryGenerated={onSummaryGenerated}
       />
     </div>
   );
