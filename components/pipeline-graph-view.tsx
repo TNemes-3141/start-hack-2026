@@ -8,6 +8,7 @@ import {
   Controls,
   Handle,
   Position,
+  getNodesBounds,
   type Node,
   type Edge,
   type NodeMouseHandler,
@@ -443,14 +444,6 @@ function SectionHeader({
   );
 }
 
-function SubsectionHeader({ title }: { icon: React.ReactNode; title: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-xs font-semibold text-foreground">{title}</span>
-    </div>
-  );
-}
-
 function EmptyState({ label }: { label: string }) {
   return <p className="text-xs text-muted-foreground italic">{label}</p>;
 }
@@ -541,13 +534,19 @@ function IssueCard({
         <button
           onClick={async () => {
             setResolving(true);
-            try { await onResolve(issue.issue_id); } finally { setResolving(false); }
+            try {
+              await onResolve(issue.issue_id);
+            } finally {
+              setResolving(false);
+            }
           }}
           disabled={resolving}
           className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <CheckCheck className="h-3.5 w-3.5" />
-          {resolving ? "Resolving…" : `Resolve — ${issue.escalate_to ?? "Approver"}`}
+          {resolving
+            ? "Resolving…"
+            : `Resolve — ${issue.escalate_to ?? "Approver"}`}
         </button>
       )}
       {/* Acknowledge button — advisory (non-blocking) unresolved issues */}
@@ -555,13 +554,19 @@ function IssueCard({
         <button
           onClick={async () => {
             setAcknowledging(true);
-            try { await onAcknowledge(issue.issue_id); } finally { setAcknowledging(false); }
+            try {
+              await onAcknowledge(issue.issue_id);
+            } finally {
+              setAcknowledging(false);
+            }
           }}
           disabled={acknowledging}
           className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
         >
           <CheckCheck className="h-3.5 w-3.5" />
-          {acknowledging ? "Acknowledging…" : `Acknowledge — ${issue.escalate_to ?? "Reviewer"}`}
+          {acknowledging
+            ? "Acknowledging…"
+            : `Acknowledge — ${issue.escalate_to ?? "Reviewer"}`}
         </button>
       )}
     </div>
@@ -579,9 +584,13 @@ function EscalationCard({
   const isAcknowledged = escalation.acknowledged === true;
 
   return (
-    <div className={`rounded-md border px-3 py-2.5 ${isAcknowledged ? "border-emerald-500/30 bg-emerald-500/5" : escalation.blocking ? "border-destructive/30 bg-destructive/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+    <div
+      className={`rounded-md border px-3 py-2.5 ${isAcknowledged ? "border-emerald-500/30 bg-emerald-500/5" : escalation.blocking ? "border-destructive/30 bg-destructive/5" : "border-amber-500/30 bg-amber-500/5"}`}
+    >
       <div className="flex items-start justify-between gap-2">
-        <span className={`text-xs font-medium ${escalation.blocking ? "text-destructive" : "text-amber-700 dark:text-amber-400"}`}>
+        <span
+          className={`text-xs font-medium ${escalation.blocking ? "text-destructive" : "text-amber-700 dark:text-amber-400"}`}
+        >
           {escalation.rule}
         </span>
         {isAcknowledged ? (
@@ -590,30 +599,43 @@ function EscalationCard({
             Acknowledged
           </Badge>
         ) : escalation.blocking ? (
-          <Badge variant="destructive" className="text-[10px] shrink-0">Blocking</Badge>
+          <Badge variant="destructive" className="text-[10px] shrink-0">
+            Blocking
+          </Badge>
         ) : (
-          <Badge variant="secondary" className="text-[10px] shrink-0">Advisory</Badge>
+          <Badge variant="secondary" className="text-[10px] shrink-0">
+            Advisory
+          </Badge>
         )}
       </div>
       {escalation.trigger && (
-        <p className="text-xs text-muted-foreground mt-1">{escalation.trigger}</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {escalation.trigger}
+        </p>
       )}
       {escalation.escalate_to && (
         <p className="text-xs text-muted-foreground mt-0.5">
-          <span className="font-medium">Escalate to:</span> {escalation.escalate_to}
+          <span className="font-medium">Escalate to:</span>{" "}
+          {escalation.escalate_to}
         </p>
       )}
       {!escalation.blocking && !isAcknowledged && onAcknowledge && (
         <button
           onClick={async () => {
             setAcknowledging(true);
-            try { await onAcknowledge(escalation.escalation_id); } finally { setAcknowledging(false); }
+            try {
+              await onAcknowledge(escalation.escalation_id);
+            } finally {
+              setAcknowledging(false);
+            }
           }}
           disabled={acknowledging}
           className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
         >
           <CheckCheck className="h-3.5 w-3.5" />
-          {acknowledging ? "Acknowledging…" : `Acknowledge — ${escalation.escalate_to ?? "Reviewer"}`}
+          {acknowledging
+            ? "Acknowledging…"
+            : `Acknowledge — ${escalation.escalate_to ?? "Reviewer"}`}
         </button>
       )}
     </div>
@@ -676,7 +698,10 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
     else if (match[3] != null) parts.push(<em key={key++}>{match[3]}</em>);
     else if (match[4] != null)
       parts.push(
-        <code key={key++} className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+        <code
+          key={key++}
+          className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]"
+        >
           {match[4]}
         </code>,
       );
@@ -703,7 +728,10 @@ function MarkdownContent({ content }: { content: string }) {
         i++;
       }
       nodes.push(
-        <pre key={key++} className="rounded-md bg-muted px-3 py-2 overflow-x-auto">
+        <pre
+          key={key++}
+          className="rounded-md bg-muted px-3 py-2 overflow-x-auto"
+        >
           <code className="text-[10px] font-mono">{codeLines.join("\n")}</code>
         </pre>,
       );
@@ -713,7 +741,10 @@ function MarkdownContent({ content }: { content: string }) {
     // H3
     if (line.startsWith("### ")) {
       nodes.push(
-        <h3 key={key++} className="text-xs font-bold text-foreground mt-2 mb-0.5">
+        <h3
+          key={key++}
+          className="text-xs font-bold text-foreground mt-2 mb-0.5"
+        >
           {renderInlineMarkdown(line.slice(4))}
         </h3>,
       );
@@ -723,7 +754,10 @@ function MarkdownContent({ content }: { content: string }) {
     // H2
     if (line.startsWith("## ")) {
       nodes.push(
-        <h2 key={key++} className="text-xs font-bold text-foreground mt-2 mb-0.5 uppercase tracking-wide">
+        <h2
+          key={key++}
+          className="text-xs font-bold text-foreground mt-2 mb-0.5 uppercase tracking-wide"
+        >
           {renderInlineMarkdown(line.slice(3))}
         </h2>,
       );
@@ -800,43 +834,19 @@ function MarkdownContent({ content }: { content: string }) {
 // ── AI summary section ────────────────────────────────────────────────────────
 
 function AiSummarySection({
-  data,
-  active,
-  onSummaryGenerated,
+  summary,
+  loading,
+  error,
 }: {
-  data: RequestData;
-  active: boolean;
-  onSummaryGenerated?: (summary: string) => void;
+  summary: string | null;
+  loading: boolean;
+  error: string | null;
 }) {
-  const [summary, setSummary] = useState<string | null>(data.ai_summary ?? null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fetchedFor = useRef<string | null>(data.ai_summary ? data.request_id : null);
-
-  useEffect(() => {
-    if (!active) return;
-    if (fetchedFor.current === data.request_id) return;
-    fetchedFor.current = data.request_id;
-    setLoading(true);
-    setSummary(null);
-    setError(null);
-    fetch("/api/procurement-summary", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestData: data }),
-    })
-      .then((r) => r.json())
-      .then((j) => {
-        setSummary(j.summary);
-        onSummaryGenerated?.(j.summary);
-      })
-      .catch(() => setError("Failed to generate summary."))
-      .finally(() => setLoading(false));
-  }, [active, data, onSummaryGenerated]);
-
   return (
     <CollapsibleSection
-      icon={<Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />}
+      icon={
+        <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+      }
       title="AI Summary"
       defaultOpen={true}
     >
@@ -874,13 +884,42 @@ function NodeDetailPanel({
   open: boolean;
   onClose: () => void;
   onResolveIssue?: (issueId: string) => Promise<void>;
-  onAcknowledgeItem?: (type: "issue" | "escalation", itemId: string) => Promise<void>;
+  onAcknowledgeItem?: (
+    type: "issue" | "escalation",
+    itemId: string,
+  ) => Promise<void>;
   onSummaryGenerated?: (summary: string) => void;
 }) {
   const label = nodeLabels[nodeId];
   const { icon } = statusConfig[status];
 
-  console.log("request", data)
+  // ── AI summary state (kept here so it survives Sheet open/close) ───────────
+  const [aiSummary, setAiSummary] = useState<string | null>(data.ai_summary ?? null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const fetchedFor = useRef<string | null>(data.ai_summary ? data.request_id : null);
+
+  const isDoneActive = open && nodeId === "done";
+  useEffect(() => {
+    if (!isDoneActive) return;
+    if (fetchedFor.current === data.request_id) return;
+    fetchedFor.current = data.request_id;
+    setAiLoading(true);
+    setAiSummary(null);
+    setAiError(null);
+    fetch("/api/procurement-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestData: data }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        setAiSummary(j.summary);
+        onSummaryGenerated?.(j.summary);
+      })
+      .catch(() => setAiError("Failed to generate summary."))
+      .finally(() => setAiLoading(false));
+  }, [isDoneActive, data, onSummaryGenerated]);
 
   const stageKey = nodeToStageId[nodeId];
   const stageData = stageKey
@@ -919,7 +958,7 @@ function NodeDetailPanel({
     "pricing-calculation",
     "scoring-ranking",
     "final-check",
-    "done"
+    "done",
   ].includes(nodeId);
   const showRecommendation = nodeId === "final-check" || nodeId === "done";
 
@@ -1042,7 +1081,11 @@ function NodeDetailPanel({
                   <EscalationCard
                     key={e.escalation_id}
                     escalation={e}
-                    onAcknowledge={onAcknowledgeItem ? (id) => onAcknowledgeItem("escalation", id) : undefined}
+                    onAcknowledge={
+                      onAcknowledgeItem
+                        ? (id) => onAcknowledgeItem("escalation", id)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -1065,7 +1108,11 @@ function NodeDetailPanel({
                     key={issue.issue_id}
                     issue={issue}
                     onResolve={onResolveIssue}
-                    onAcknowledge={onAcknowledgeItem ? (id) => onAcknowledgeItem("issue", id) : undefined}
+                    onAcknowledge={
+                      onAcknowledgeItem
+                        ? (id) => onAcknowledgeItem("issue", id)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -1101,13 +1148,17 @@ function NodeDetailPanel({
               </div>
             )}
           </div>
-          <Separator />
-          
-          <AiSummarySection
-            data={data}
-            active={open && nodeId === "done"}
-            onSummaryGenerated={onSummaryGenerated}
-          />
+          {nodeId === "done" && (
+            <>
+              <Separator />
+
+              <AiSummarySection
+                summary={aiSummary}
+                loading={aiLoading}
+                error={aiError}
+              />
+            </>
+          )}
           <Separator />
           {showApprovalTier && approvalTier && (
             <>
@@ -1376,6 +1427,7 @@ export function PipelineGraphView({
   onResolveIssue,
   onAcknowledgeItem,
   onSummaryGenerated,
+  openDonePanelTrigger,
 }: {
   nodeStatuses: NodeStatuses;
   requestData: RequestData;
@@ -1383,13 +1435,24 @@ export function PipelineGraphView({
   mode?: OrchestratorMode;
   onApprove?: () => Promise<void>;
   onResolveIssue?: (stageKey: string, issueId: string) => Promise<void>;
-  onAcknowledgeItem?: (stageKey: string, type: "issue" | "escalation", itemId: string) => Promise<void>;
+  onAcknowledgeItem?: (
+    stageKey: string,
+    type: "issue" | "escalation",
+    itemId: string,
+  ) => Promise<void>;
   onSummaryGenerated?: (summary: string) => void;
+  openDonePanelTrigger?: number;
 }) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const [selectedNodeId, setSelectedNodeId] = useState<NodeId | null>(null);
+
+  useEffect(() => {
+    if (openDonePanelTrigger && openDonePanelTrigger > 0) {
+      setSelectedNodeId("done");
+    }
+  }, [openDonePanelTrigger]);
   const lastNodeId = useRef<NodeId | null>(null);
   if (selectedNodeId) lastNodeId.current = selectedNodeId;
   const [isApproving, setIsApproving] = useState(false);
@@ -1475,14 +1538,21 @@ export function PipelineGraphView({
     setSelectedNodeId(node.id as NodeId);
   }, []);
 
-  const onInit = useCallback((instance: ReactFlowInstance) => {
-    instance.fitView({
-      nodes: [{ id: "request-submitted" }],
-      padding: 3,
-      maxZoom: 3,
-      duration: 0,
-    });
-  }, []);
+  const onInit = useCallback(
+    (instance: ReactFlowInstance) => {
+      if (nodes.length === 0) return;
+
+      const bounds = getNodesBounds(nodes); // All nodes bounds
+      instance.fitView({
+        padding: 0.15, // Tight margin
+        includeHiddenNodes: false,
+        maxZoom: 1.2, // Prevent over-zoom
+        duration: 0, // Smooth animation
+        // Auto-centers graph center in viewport
+      });
+    },
+    [nodes],
+  );
 
   // Derive blocked state: any stage has an unacknowledged blocking escalation or unresolved blocking issue
   const isBlocked =
@@ -1508,7 +1578,7 @@ export function PipelineGraphView({
     firstBlockingEscalation?.escalate_to ?? firstBlockingIssue?.escalate_to;
 
   return (
-    <div className="flex flex-col gap-4 h-full random">
+    <div className="flex flex-col gap-4 h-fit">
       {isRunning && mode === "owner" && (
         <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300 shrink-0">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -1565,7 +1635,11 @@ export function PipelineGraphView({
           )}
         </div>
       )}
-      <div className="flex-1 rounded-lg border border-border bg-background min-h-0">
+      <div className="relative rounded-lg border border-border bg-background h-500! w-full overflow-hidden">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm pointer-events-none select-none">
+          <Info className="h-3.5 w-3.5 shrink-0" />
+          Click on a node to view details
+        </div>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1576,19 +1650,20 @@ export function PipelineGraphView({
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}
-          panOnScroll
+          panOnScroll={false} // No panning
           zoomOnScroll={false}
-          zoomActivationKeyCode="Control"
-          translateExtent={[
-            [-500, -100], // Top-left min bounds (x1, y1)
-            [1200, 2300], // Bottom-right max bounds (x2, y2)
-          ]}
+          zoomOnDoubleClick={false}
+          zoomOnPinch={false}
+          panOnDrag={false}
+          zoomActivationKeyCode={null}
           preventScrolling={false}
+          minZoom={0.1}
+          maxZoom={1.5}
         >
           <Background color="var(--border)" gap={24} />
-          <Controls showInteractive={false} />
         </ReactFlow>
       </div>
+
       <NodeDetailPanel
         nodeId={lastNodeId.current ?? "request-submitted"}
         status={
@@ -1601,16 +1676,22 @@ export function PipelineGraphView({
         onResolveIssue={
           onResolveIssue
             ? (issueId) => {
-                const stageKey = nodeToStageId[lastNodeId.current ?? "request-submitted"];
-                return stageKey ? onResolveIssue(stageKey, issueId) : Promise.resolve();
+                const stageKey =
+                  nodeToStageId[lastNodeId.current ?? "request-submitted"];
+                return stageKey
+                  ? onResolveIssue(stageKey, issueId)
+                  : Promise.resolve();
               }
             : undefined
         }
         onAcknowledgeItem={
           onAcknowledgeItem
             ? (type, itemId) => {
-                const stageKey = nodeToStageId[lastNodeId.current ?? "request-submitted"];
-                return stageKey ? onAcknowledgeItem(stageKey, type, itemId) : Promise.resolve();
+                const stageKey =
+                  nodeToStageId[lastNodeId.current ?? "request-submitted"];
+                return stageKey
+                  ? onAcknowledgeItem(stageKey, type, itemId)
+                  : Promise.resolve();
               }
             : undefined
         }
