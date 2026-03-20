@@ -1635,7 +1635,11 @@ export function PipelineGraphView({
           )}
         </div>
       )}
-      <div className="rounded-lg border border-border bg-background h-500! w-full overflow-hidden">
+      <div className="relative rounded-lg border border-border bg-background h-500! w-full overflow-hidden">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm pointer-events-none select-none">
+          <Info className="h-3.5 w-3.5 shrink-0" />
+          Click on a node to view details
+        </div>
         <ReactFlow
           nodes={nodes}
           edges={edges}
