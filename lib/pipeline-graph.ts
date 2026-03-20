@@ -91,9 +91,12 @@ export const TERMINAL_STATUSES = new Set<PipelineNodeStatus>([
 
 // After updating a node to a terminal status, set immediate successors to "working"
 // (if all their required predecessors are also terminal)
+// Pass allowEscalationFanIn=true on the approve/resume path so escalated predecessors
+// don't permanently block fan-in nodes when checks are being skipped.
 export function propagateWorking(
   statuses: NodeStatuses,
   updatedId: string,
+  allowEscalationFanIn = false,
 ): NodeStatuses {
   const next = { ...statuses };
   for (const successor of SUCCESSORS[updatedId] ?? []) {
@@ -102,14 +105,13 @@ export function propagateWorking(
     if (required) {
       // All required predecessors must be terminal …
       if (!required.every((p) => TERMINAL_STATUSES.has(next[p]))) continue;
-      // … but none of them may be blocked (escalation propagates the block, not work)
-      if (required.some((p) => next[p] === "escalation")) continue;
+      // … and none may be a hard escalation unless we're on the approved-skip path
+      if (!allowEscalationFanIn && required.some((p) => next[p] === "escalation")) continue;
     }
-    
-      next[successor] = "working";
+
+    next[successor] = "working";
   }
 
-  // console.log("next:", next);
   return next;
 }
 
