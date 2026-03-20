@@ -1102,6 +1102,13 @@ function NodeDetailPanel({
             )}
           </div>
           <Separator />
+          
+          <AiSummarySection
+            data={data}
+            active={open && nodeId === "done"}
+            onSummaryGenerated={onSummaryGenerated}
+          />
+          <Separator />
           {showApprovalTier && approvalTier && (
             <>
               <div>
@@ -1350,14 +1357,8 @@ function NodeDetailPanel({
                   ))}
                 </div>
               </div>
-              <Separator />
             </>
           )}
-          <AiSummarySection
-            data={data}
-            active={open && nodeId === "done"}
-            onSummaryGenerated={onSummaryGenerated}
-          />
         </div>
       </SheetContent>
     </Sheet>
