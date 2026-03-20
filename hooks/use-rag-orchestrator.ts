@@ -141,8 +141,32 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
       );
       const rows: RunRow[] = await res.json();
       if (!rows[0]) return;
-      setRunId(rows[0].id);
-      applyRunRow(rows[0]);
+      const row = rows[0];
+
+      // If the run has stale heartbeat (>30s) and wasn't owned by this client,
+      // it's an orphan from a closed tab. Clear any stuck "working" nodes so the
+      // UI doesn't spin forever, and mark the run as stalled so it can be resumed.
+      const heartbeatAge = row.last_heartbeat_at
+        ? Date.now() - new Date(row.last_heartbeat_at).getTime()
+        : Infinity;
+      const isOrphan = heartbeatAge > 30_000 && row.active_client_id !== CLIENT_ID;
+      const hasWorkingNode = Object.values(row.node_statuses ?? {}).some((s) => s === "working");
+
+      if (isOrphan && hasWorkingNode) {
+        const clearedStatuses: NodeStatuses = Object.fromEntries(
+          Object.entries(row.node_statuses).map(([k, v]) => [k, v === "working" ? "outstanding" : v]),
+        ) as NodeStatuses;
+        await patchRun(row.id, {
+          status: "stalled",
+          node_statuses: clearedStatuses,
+          active_client_id: null,
+        });
+        row.node_statuses = clearedStatuses;
+        row.status = "stalled";
+      }
+
+      setRunId(row.id);
+      applyRunRow(row);
     }
     void init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -230,14 +254,14 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
           ? { ...statusesRef.current, [graphId]: effectiveStatus! }
           : statusesRef.current;
         const nextStatuses = (graphId && effectiveStatus !== "escalation")
-          ? propagateWorking(withUpdate, graphId)
+          ? propagateWorking(withUpdate, graphId, skipBlockingChecks)
           : withUpdate;
 
         
         // console.log("skip-blocking-checks:", skipBlockingChecks, "for", nodeName, "with", nodeStatus, "and effectiveStatus", effectiveStatus)
 
         if (nodeName === "final_check") {
-          let all_good = !(Object.entries(nextStatuses) as [string, PipelineNodeStatus][]).some(([key, value]) => value === "escalation" || value === "warning")
+          let all_good = !(Object.entries(nextStatuses) as [string, PipelineNodeStatus][]).some(([, value]) => value === "escalation" || value === "warning")
           if (all_good) {
             nextStatuses["done"] = "done"
           } else {
@@ -266,9 +290,14 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
       const isBlocked = !skipBlockingChecks && Object.values(dataRef.current.stages).some(
         (s) => s.escalations?.some((e) => e.blocking) || s.issues?.some((i) => i.blocking),
       );
+      // If any node is still "working" (e.g. API threw before onUpdate fired), move it to
+      // "warning" so the UI doesn't spin forever on a dead pipeline.
+      const clearedStatuses: NodeStatuses = Object.fromEntries(
+        Object.entries(statusesRef.current).map(([k, v]) => [k, v === "working" ? "warning" : v]),
+      ) as NodeStatuses;
       const finalStatuses: NodeStatuses = isBlocked
-        ? statusesRef.current
-        : { ...statusesRef.current, "done": "done" };
+        ? clearedStatuses
+        : { ...clearedStatuses, "done": "done" };
       statusesRef.current = finalStatuses;
       setNodeStatuses(finalStatuses);
       void patchRun(id, {

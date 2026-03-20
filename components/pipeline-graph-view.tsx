@@ -1031,11 +1031,12 @@ export function PipelineGraphView({
     if (working.length > 0) {
       setIsRunning(true);
       setIsPaused(false);
+    } else if (outstanding.length > 0) {
+      setIsRunning(false);
+      setIsPaused(true);
     } else {
-      if (outstanding.length > 0) {
-        setIsRunning(false);
-        setIsPaused(true);
-      }
+      setIsRunning(false);
+      setIsPaused(false);
     }
   }, [nodeStatuses]);
 

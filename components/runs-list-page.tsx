@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown, Braces, Trash2 } from "lucide-react"
+import { ArrowLeft, Loader2, RefreshCw, ChevronRight, GitBranch, AlertTriangle, ShieldAlert, FileDown, Braces, Trash2, Tag, Building2, MapPin, Calendar } from "lucide-react"
 import { supabaseBrowser } from "@/lib/supabase-browser"
 import { PipelineGraphView } from "@/components/pipeline-graph-view"
 import { INITIAL_STATUSES, type NodeStatuses } from "@/lib/pipeline-graph"
@@ -120,14 +120,15 @@ function RunCard({ run, onClick, onDelete }: { run: RunRow; onClick: () => void;
     }
   }
 
-  const interp   = run.context_payload?.request_interpretation
-  const title    = interp?.title || interp?.category_l2 || "Untitled Request"
-  const catL1    = interp?.category_l1
-  const catL2    = interp?.category_l2
-  const budget   = interp?.budget_amount
-  const currency = interp?.currency
-  const bu       = interp?.business_unit
-  const country  = interp?.country
+  const interp     = run.context_payload?.request_interpretation
+  const title      = interp?.title || interp?.category_l2 || "Untitled Request"
+  const catL1      = interp?.category_l1
+  const catL2      = interp?.category_l2
+  const budget     = interp?.budget_amount
+  const currency   = interp?.currency
+  const bu         = interp?.business_unit
+  const country    = interp?.country
+  const requiredBy = interp?.required_by_date
   const { label, dot, badge, bar } = getStatusMeta(run.status)
   const { warnings, escalations }  = countIssues(run)
 
@@ -140,33 +141,58 @@ function RunCard({ run, onClick, onDelete }: { run: RunRow; onClick: () => void;
 
       <div className="flex-1 flex items-start justify-between gap-4 px-5 py-4">
         <div className="flex-1 min-w-0 space-y-1.5">
+          {/* Title */}
           <div className="flex items-center gap-2.5">
             <span className={`h-2 w-2 rounded-full shrink-0 ${dot}`} />
             <p className="text-sm font-semibold text-foreground leading-snug line-clamp-1">{title}</p>
           </div>
 
-          {(catL1 || catL2) && (
-            <p className="text-xs text-muted-foreground pl-4.5">
-              {[catL1, catL2].filter(Boolean).join(" · ")}
-            </p>
-          )}
-
+          {/* Meta row: icon+value items merged with issue pills — all py-0.5 for consistent height */}
           <div className="flex items-center gap-1.5 pl-4.5 flex-wrap">
+            {(catL1 || catL2) && (
+              <span className="inline-flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground">
+                <Tag className="h-3 w-3 shrink-0" />{[catL1, catL2].filter(Boolean).join(" / ")}
+              </span>
+            )}
             {bu && (
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{bu}</span>
+              <>
+                <span className="text-muted-foreground/40 text-[11px]">·</span>
+                <span className="inline-flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground">
+                  <Building2 className="h-3 w-3 shrink-0" />{bu}
+                </span>
+              </>
             )}
             {country && (
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{country}</span>
+              <>
+                <span className="text-muted-foreground/40 text-[11px]">·</span>
+                <span className="inline-flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground">
+                  <MapPin className="h-3 w-3 shrink-0" />{country}
+                </span>
+              </>
+            )}
+            {requiredBy && (
+              <>
+                <span className="text-muted-foreground/40 text-[11px]">·</span>
+                <span className="inline-flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground">
+                  <Calendar className="h-3 w-3 shrink-0" />{requiredBy}
+                </span>
+              </>
             )}
             {escalations > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
-                <ShieldAlert className="h-3 w-3" />{escalations} escalation{escalations > 1 ? "s" : ""}
-              </span>
+              <>
+                <span className="text-muted-foreground/40 text-[11px]">·</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+                  <ShieldAlert className="h-3 w-3" />{escalations} escalation{escalations > 1 ? "s" : ""}
+                </span>
+              </>
             )}
             {warnings > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                <AlertTriangle className="h-3 w-3" />{warnings} warning{warnings > 1 ? "s" : ""}
-              </span>
+              <>
+                <span className="text-muted-foreground/40 text-[11px]">·</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3 w-3" />{warnings} warning{warnings > 1 ? "s" : ""}
+                </span>
+              </>
             )}
           </div>
         </div>
@@ -315,7 +341,7 @@ function EscalationInfoCard({ requestData }: { requestData: RequestData }) {
         )}
       </div>
       <div className="flex flex-col gap-1.5">
-        {escalations.sort((esc1, esc2) => esc1.blocking ? -1 : 1).map((e) => (
+        {escalations.sort((esc1) => esc1.blocking ? -1 : 1).map((e) => (
           <div
             key={e.escalation_id}
             className="flex items-start gap-3 rounded-md border bg-background px-3 py-2"

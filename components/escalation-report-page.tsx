@@ -94,36 +94,41 @@ const STAGE_LABELS: Record<string, string> = {
   final_check: "Final Check",
 }
 
-function runHasEscalationFor(run: RunRow, targets: string[]): boolean {
+function matchesTargets(escalateTo: string, targets: string[], excludeTargets: string[]): boolean {
+  const lower = escalateTo?.toLowerCase() ?? ""
+  if (excludeTargets.some((x) => lower.includes(x.toLowerCase()))) return false
+  if (targets.length === 0) return true
+  return targets.some((t) => lower.includes(t.toLowerCase()))
+}
+
+function runHasEscalationFor(run: RunRow, targets: string[], excludeTargets: string[] = []): boolean {
   if (!run.context_payload?.stages) return false
   for (const stage of Object.values(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
       if (!e.blocking) continue
-      if (targets.length === 0) return true
-      if (targets.some((t) => e.escalate_to?.toLowerCase().includes(t.toLowerCase()))) return true
+      if (matchesTargets(e.escalate_to, targets, excludeTargets)) return true
     }
     for (const i of stage.issues ?? []) {
       if (!i.blocking) continue
-      if (targets.length === 0) return true
-      if (targets.some((t) => i.escalate_to?.toLowerCase().includes(t.toLowerCase()))) return true
+      if (matchesTargets(i.escalate_to, targets, excludeTargets)) return true
     }
   }
   return false
 }
 
-function getRoleEscalations(run: RunRow, targets: string[]) {
+function getRoleEscalations(run: RunRow, targets: string[], excludeTargets: string[] = []) {
   const result: { stageKey: string; stageLabel: string; rule?: string; trigger: string; escalate_to: string; blocking: boolean }[] = []
   if (!run.context_payload?.stages) return result
   for (const [stageKey, stage] of Object.entries(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
       if (!e.blocking) continue
-      if (targets.length === 0 || targets.some((t) => e.escalate_to?.toLowerCase().includes(t.toLowerCase()))) {
+      if (matchesTargets(e.escalate_to, targets, excludeTargets)) {
         result.push({ stageKey, stageLabel: STAGE_LABELS[stageKey] ?? stageKey, rule: e.rule, trigger: e.trigger, escalate_to: e.escalate_to, blocking: true })
       }
     }
     for (const i of stage.issues ?? []) {
       if (!i.blocking) continue
-      if (targets.length === 0 || targets.some((t) => i.escalate_to?.toLowerCase().includes(t.toLowerCase()))) {
+      if (matchesTargets(i.escalate_to, targets, excludeTargets)) {
         result.push({ stageKey, stageLabel: STAGE_LABELS[stageKey] ?? stageKey, trigger: i.trigger, escalate_to: i.escalate_to, blocking: true })
       }
     }
@@ -198,11 +203,13 @@ function Section({ title, icon: Icon, children, defaultOpen = true }: {
 function EscalationReportCard({
   run,
   targets,
+  excludeTargets = [],
   roleLabel,
   onAbort,
 }: {
   run: RunRow
   targets: string[]
+  excludeTargets?: string[]
   roleLabel: string
   onAbort: (runId: string) => void
 }) {
@@ -218,7 +225,7 @@ function EscalationReportCard({
   const recommendation = data.recommendation
   const audit = data.audit_trail
 
-  const myEscalations = getRoleEscalations(run, targets)
+  const myEscalations = getRoleEscalations(run, targets, excludeTargets)
   const allReasonings = getAllReasonings(run)
   const policyViolations = getAllPolicyViolations(run)
 
@@ -729,9 +736,11 @@ function EscalationReportCard({
 
 export function EscalationReportPage({
   escalateTo,
+  excludeTargets = [],
   roleLabel,
 }: {
   escalateTo: string[]
+  excludeTargets?: string[]
   roleLabel: string
 }) {
   const [allRuns, setAllRuns] = useState<RunRow[]>([])
@@ -740,7 +749,7 @@ export function EscalationReportPage({
   const escalateToRef = useRef(escalateTo)
   useEffect(() => { escalateToRef.current = escalateTo }, [escalateTo])
 
-  const runs = allRuns.filter((r) => runHasEscalationFor(r, escalateTo))
+  const runs = allRuns.filter((r) => runHasEscalationFor(r, escalateTo, excludeTargets))
 
   function handleAbort(runId: string) {
     setAllRuns((prev) => prev.filter((r) => r.id !== runId))
@@ -827,6 +836,7 @@ export function EscalationReportPage({
                 key={run.id}
                 run={run}
                 targets={escalateTo}
+                excludeTargets={excludeTargets}
                 roleLabel={roleLabel}
                 onAbort={handleAbort}
               />
