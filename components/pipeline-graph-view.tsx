@@ -649,12 +649,19 @@ function NodeDetailPanel({
   const policyViolations = stageData?.policy_violations ?? [];
   const reasonings = stageData?.reasonings ?? [];
 
-  const sortedEscalations = [...escalations].sort(
-    (a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0),
-  );
-  const sortedIssues = [...issues].sort(
-    (a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0),
-  );
+  // Active items first (not acknowledged/resolved), then blocking before advisory, acknowledged/resolved last
+  const sortedEscalations = [...escalations].sort((a, b) => {
+    const aActive = !a.acknowledged ? 1 : 0
+    const bActive = !b.acknowledged ? 1 : 0
+    if (aActive !== bActive) return bActive - aActive
+    return (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0)
+  });
+  const sortedIssues = [...issues].sort((a, b) => {
+    const aActive = !a.resolved ? 1 : 0
+    const bActive = !b.resolved ? 1 : 0
+    if (aActive !== bActive) return bActive - aActive
+    return (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0)
+  });
 
   const showApprovalTier = nodeId === "approval-tier";
   const showSuppliers = [
@@ -1150,22 +1157,22 @@ export function PipelineGraphView({
     });
   }, []);
 
-  // Derive blocked state: any stage has a blocking escalation or issue
+  // Derive blocked state: any stage has an unacknowledged blocking escalation or unresolved blocking issue
   const isBlocked =
     !isPipelineRunning &&
     Object.values(requestData.stages).some(
       (s) =>
-        s.escalations?.some((e) => e.blocking) ||
-        s.issues?.some((i) => i.blocking),
+        s.escalations?.some((e) => e.blocking && !e.acknowledged) ||
+        s.issues?.some((i) => i.blocking && !i.resolved),
     );
 
-  // First blocking escalation for the banner description
+  // First active blocking item for the banner description
   const firstBlockingEscalation = Object.values(requestData.stages)
     .flatMap((s) => s.escalations ?? [])
-    .find((e) => e.blocking);
+    .find((e) => e.blocking && !e.acknowledged);
   const firstBlockingIssue = Object.values(requestData.stages)
     .flatMap((s) => s.issues ?? [])
-    .find((i) => i.blocking);
+    .find((i) => i.blocking && !i.resolved);
   const blockingTrigger =
     firstBlockingEscalation?.trigger ??
     firstBlockingIssue?.trigger ??

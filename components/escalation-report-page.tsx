@@ -102,6 +102,7 @@ function matchesTargets(escalateTo: string, targets: string[], excludeTargets: s
 }
 
 function runHasEscalationFor(run: RunRow, targets: string[], excludeTargets: string[] = []): boolean {
+  if (run.status === "done" || run.status === "aborted") return false
   if (!run.context_payload?.stages) return false
   for (const stage of Object.values(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
