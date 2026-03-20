@@ -1,63 +1,107 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
+import Dither from '@/components/Dither';
+import Dot from "@/components/animata/background/dot";
+import AbstractShape from "@/components/animata/abstract-shape";
+import Image from "next/image";
+import Link from "next/link";
+
+export default function LandingPage() {
+  const carouselTrackRef = useRef<HTMLDivElement>(null);
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true) }, []);
+
+  useEffect(() => {
+    let rafId = 0;
+    let lastTs = performance.now();
+    let offset = 0;
+
+    const animate = (ts: number) => {
+      const track = carouselTrackRef.current;
+      if (!track) {
+        rafId = requestAnimationFrame(animate);
+        return;
+      }
+
+      const singleLoopWidth = track.scrollWidth / 2;
+      if (singleLoopWidth > 0) {
+        const delta = ts - lastTs;
+        const speedPxPerSecond = 36;
+        offset = (offset + (delta * speedPxPerSecond) / 1000) % singleLoopWidth;
+
+        // Move left continuously; duplicate content makes this seamless.
+        track.style.transform = `translate3d(${-offset}px, 0, 0)`;
+      }
+      lastTs = ts;
+      rafId = requestAnimationFrame(animate);
+    };
+
+    rafId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  const folder = mounted && resolvedTheme === "dark" ? "dark" : "light";
+  const carouselImages = [
+    { src: `/images/${folder}/image1.png`, alt: "Dashboard preview 1" },
+    { src: `/images/${folder}/image2.png`, alt: "Dashboard preview 2" },
+    { src: `/images/${folder}/image0.png`, alt: "Dashboard preview 3" },
+  ];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <Dot className="absolute top-0 inset-0 opacity-15" spacing={30} />
+        <Dither
+          waveColor={[0.5, 0.5, 0.5]}
+          disableAnimation={false}
+          enableMouseInteraction
+          mouseRadius={0.3}
+          colorNum={4}
+          waveAmplitude={0.3}
+          waveFrequency={3}
+          waveSpeed={0.05}
+          className="absolute top-0 inset-0 opacity-15"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+      </div>
+
+      <main className="relative z-10 mx-auto grid min-h-screen w-full grid-cols-1 items-center p-8 text-center lg:grid-cols-12 lg:grid-rows-12">
+        <h1 className="w-full max-w-4xl text-left text-[9vw] text font-medium leading-none lg:col-start-1 lg:col-span-8 lg:row-start-1 lg:row-span-5 lg:self-start">
+          PENROSE PROCURE
+        </h1>
+        <p className="w-full text-justify max-w-3xl text-sm text-muted-foreground sm:text-base lg:col-start-9 lg:col-span-4 lg:row-start-7 lg:row-span-2 lg:self-end pb-10">
+          Penrose Procure automates procurement management and aids procurement auditing using a multi agentic model.
+          Benefit from faster procurement services, more reliable auditing, and ease of use.
+        </p>
+        <nav className="text-xl flex justify-between lg:col-start-9 lg:col-span-4 lg:row-start-1 lg:row-span-1 pr-14 z-10">
+          <Link href="/" className="underline underline-offset-5">Home</Link>
+          <Link href="/procurement" className="underline underline-offset-5">Dashboard</Link>
+          <Link href="/client" className="underline underline-offset-5">Client</Link>
+        </nav>
+        <div className="h-full w-full justify-self-center lg:col-start-1 lg:col-span-12 lg:row-start-1 lg:row-span-12">
+          <AbstractShape />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="lg:col-start-1 lg:col-span-12 lg:row-start-8 lg:row-span-5 relative h-full overflow-hidden">
+          <div
+            ref={carouselTrackRef}
+            className="flex h-full w-max items-end gap-2 will-change-transform"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {[...carouselImages, ...carouselImages].map((image, index) => (
+              <Image
+                key={`${image.alt}-${index}`}
+                src={image.src}
+                alt={image.alt}
+                width={2984}
+                height={1836}
+                className="h-[300px] w-auto shrink-0 rounded-lg object-contain transition-transform duration-300 ease-out hover:z-10 hover:scale-101"
+              />
+            ))}
+          </div>
         </div>
       </main>
     </div>
