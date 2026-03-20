@@ -147,52 +147,37 @@ function RunCard({ run, onClick, onDelete }: { run: RunRow; onClick: () => void;
             <p className="text-sm font-semibold text-foreground leading-snug line-clamp-1">{title}</p>
           </div>
 
-          {/* Meta row: icon+value items merged with issue pills — all py-0.5 for consistent height */}
+          {/* Meta row: all items as uniform pills so height is consistent */}
           <div className="flex items-center gap-1.5 pl-4.5 flex-wrap">
             {(catL1 || catL2) && (
-              <span className="inline-flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
                 <Tag className="h-3 w-3 shrink-0" />{[catL1, catL2].filter(Boolean).join(" / ")}
               </span>
             )}
             {bu && (
-              <>
-                <span className="text-muted-foreground/40 text-[11px]">·</span>
-                <span className="inline-flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground">
-                  <Building2 className="h-3 w-3 shrink-0" />{bu}
-                </span>
-              </>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                <Building2 className="h-3 w-3 shrink-0" />{bu}
+              </span>
             )}
             {country && (
-              <>
-                <span className="text-muted-foreground/40 text-[11px]">·</span>
-                <span className="inline-flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground">
-                  <MapPin className="h-3 w-3 shrink-0" />{country}
-                </span>
-              </>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                <MapPin className="h-3 w-3 shrink-0" />{country}
+              </span>
             )}
             {requiredBy && (
-              <>
-                <span className="text-muted-foreground/40 text-[11px]">·</span>
-                <span className="inline-flex items-center gap-1 py-0.5 text-[11px] text-muted-foreground">
-                  <Calendar className="h-3 w-3 shrink-0" />{requiredBy}
-                </span>
-              </>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                <Calendar className="h-3 w-3 shrink-0" />{requiredBy}
+              </span>
             )}
             {escalations > 0 && (
-              <>
-                <span className="text-muted-foreground/40 text-[11px]">·</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
-                  <ShieldAlert className="h-3 w-3" />{escalations} escalation{escalations > 1 ? "s" : ""}
-                </span>
-              </>
+              <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+                <ShieldAlert className="h-3 w-3" />{escalations} escalation{escalations > 1 ? "s" : ""}
+              </span>
             )}
             {warnings > 0 && (
-              <>
-                <span className="text-muted-foreground/40 text-[11px]">·</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="h-3 w-3" />{warnings} warning{warnings > 1 ? "s" : ""}
-                </span>
-              </>
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-3 w-3" />{warnings} warning{warnings > 1 ? "s" : ""}
+              </span>
             )}
           </div>
         </div>
