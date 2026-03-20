@@ -865,6 +865,8 @@ function NodeDetailPanel({
   open,
   onClose,
   onResolveIssue,
+  onAcknowledgeItem,
+  onSummaryGenerated,
 }: {
   nodeId: NodeId;
   status: PipelineNodeStatus;
@@ -872,6 +874,8 @@ function NodeDetailPanel({
   open: boolean;
   onClose: () => void;
   onResolveIssue?: (issueId: string) => Promise<void>;
+  onAcknowledgeItem?: (type: "issue" | "escalation", itemId: string) => Promise<void>;
+  onSummaryGenerated?: (summary: string) => void;
 }) {
   const label = nodeLabels[nodeId];
   const { icon } = statusConfig[status];
@@ -1035,35 +1039,11 @@ function NodeDetailPanel({
             ) : (
               <div className="flex flex-col gap-2">
                 {sortedEscalations.map((e) => (
-                  <div
+                  <EscalationCard
                     key={e.escalation_id}
-                    className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-medium text-destructive">
-                        {e.rule}
-                      </span>
-                      {e.blocking && (
-                        <Badge
-                          variant="destructive"
-                          className="text-[10px] shrink-0"
-                        >
-                          Blocking
-                        </Badge>
-                      )}
-                    </div>
-                    {e.trigger && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {e.trigger}
-                      </p>
-                    )}
-                    {e.escalate_to && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        <span className="font-medium">Escalate to:</span>{" "}
-                        {e.escalate_to}
-                      </p>
-                    )}
-                  </div>
+                    escalation={e}
+                    onAcknowledge={onAcknowledgeItem ? (id) => onAcknowledgeItem("escalation", id) : undefined}
+                  />
                 ))}
               </div>
             )}
@@ -1085,6 +1065,7 @@ function NodeDetailPanel({
                     key={issue.issue_id}
                     issue={issue}
                     onResolve={onResolveIssue}
+                    onAcknowledge={onAcknowledgeItem ? (id) => onAcknowledgeItem("issue", id) : undefined}
                   />
                 ))}
               </div>
@@ -1303,7 +1284,7 @@ function NodeDetailPanel({
               <Separator />
             </>
           )}
-          {showAuditTrail && auditTrail?.policies_checked?.length > 0 && (
+          {auditTrail?.policies_checked?.length > 0 && (
             <>
               <div>
                 <SectionHeader
@@ -1372,6 +1353,11 @@ function NodeDetailPanel({
               <Separator />
             </>
           )}
+          <AiSummarySection
+            data={data}
+            active={open && nodeId === "done"}
+            onSummaryGenerated={onSummaryGenerated}
+          />
         </div>
       </SheetContent>
     </Sheet>
@@ -1387,6 +1373,8 @@ export function PipelineGraphView({
   mode,
   onApprove,
   onResolveIssue,
+  onAcknowledgeItem,
+  onSummaryGenerated,
 }: {
   nodeStatuses: NodeStatuses;
   requestData: RequestData;
@@ -1394,6 +1382,8 @@ export function PipelineGraphView({
   mode?: OrchestratorMode;
   onApprove?: () => Promise<void>;
   onResolveIssue?: (stageKey: string, issueId: string) => Promise<void>;
+  onAcknowledgeItem?: (stageKey: string, type: "issue" | "escalation", itemId: string) => Promise<void>;
+  onSummaryGenerated?: (summary: string) => void;
 }) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
