@@ -94,25 +94,83 @@ const STAGE_LABELS: Record<string, string> = {
   final_check: "Final Check",
 }
 
+function matchesTarget(value: string | undefined, targets: string[]): boolean {
+  if (!value) return false
+  return targets.some((t) => value.toLowerCase().includes(t.toLowerCase()))
+}
+
 function runHasEscalationFor(run: RunRow, targets: string[]): boolean {
+  if (targets.length === 0) return true
+
+  // For completed runs awaiting senior sign-off, check all signals
+  if (run.status === "final_check_complete" || run.status === "done") {
+    // 1. deviation_approval_required_from on the tier
+    const deviationApprovers: string[] = run.context_payload?.approval_tier?.deviation_approval_required_from ?? []
+    if (deviationApprovers.some((a) => matchesTarget(a, targets))) return true
+
+    // 2. Non-blocking escalations (approval_tier stage writes these for tier 3/4/5)
+    if (run.context_payload?.stages) {
+      for (const stage of Object.values(run.context_payload.stages)) {
+        for (const e of stage.escalations ?? []) {
+          if (matchesTarget(e.escalate_to, targets)) return true
+        }
+      }
+    }
+  }
+
   if (!run.context_payload?.stages) return false
   for (const stage of Object.values(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
       if (!e.blocking) continue
-      if (targets.length === 0) return true
-      if (targets.some((t) => e.escalate_to?.toLowerCase().includes(t.toLowerCase()))) return true
+      if (matchesTarget(e.escalate_to, targets)) return true
     }
     for (const i of stage.issues ?? []) {
       if (!i.blocking) continue
-      if (targets.length === 0) return true
-      if (targets.some((t) => i.escalate_to?.toLowerCase().includes(t.toLowerCase()))) return true
+      if (matchesTarget(i.escalate_to, targets)) return true
     }
   }
   return false
 }
 
 function getRoleEscalations(run: RunRow, targets: string[]) {
-  const result: { stageKey: string; stageLabel: string; rule?: string; trigger: string; escalate_to: string; blocking: boolean }[] = []
+  const result: { stageKey: string; stageLabel: string; rule?: string; trigger: string; escalate_to: string; blocking: boolean; isFinalApproval?: boolean }[] = []
+
+  // For completed runs awaiting senior sign-off, surface the approval requirement
+  if (run.status === "final_check_complete" || run.status === "done") {
+    const tier = run.context_payload?.approval_tier
+    const deviationApprovers: string[] = tier?.deviation_approval_required_from ?? []
+    const tierNum = tier?.tier_number
+
+    // Find the non-blocking approval_tier escalation targeting this role
+    let approvalTarget = deviationApprovers.join(", ")
+    let approvalTrigger = ""
+    if (run.context_payload?.stages) {
+      for (const stage of Object.values(run.context_payload.stages)) {
+        for (const e of stage.escalations ?? []) {
+          if (matchesTarget(e.escalate_to, targets)) {
+            approvalTarget = e.escalate_to
+            approvalTrigger = e.trigger
+          }
+        }
+      }
+    }
+
+    const matched = deviationApprovers.some((a) => matchesTarget(a, targets))
+      || !!approvalTrigger
+
+    if (targets.length === 0 || matched) {
+      result.push({
+        stageKey: "final_check",
+        stageLabel: "Final Check",
+        trigger: approvalTrigger
+          || `Procurement pipeline completed. Final approval required from ${approvalTarget}${tierNum ? ` (Approval Tier ${tierNum})` : ""} before this request can be awarded.`,
+        escalate_to: approvalTarget || targets.join(", "),
+        blocking: true,
+        isFinalApproval: true,
+      })
+    }
+  }
+
   if (!run.context_payload?.stages) return result
   for (const [stageKey, stage] of Object.entries(run.context_payload.stages)) {
     for (const e of stage.escalations ?? []) {
@@ -228,7 +286,16 @@ function EscalationReportCard({
   async function handleResolve() {
     setResolving(true)
     try {
-      await approveAndResume(run.id, data, roleLabel)
+      if (run.status === "final_check_complete" || run.status === "done") {
+        // Pipeline already finished — just stamp as approved
+        await fetch(`/api/runs/${run.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "approved", last_heartbeat_at: new Date().toISOString() }),
+        })
+      } else {
+        await approveAndResume(run.id, data, roleLabel)
+      }
     } finally {
       setResolving(false)
     }
@@ -245,17 +312,20 @@ function EscalationReportCard({
   }
 
   const actionBusy = resolving || aborting
+  const isFinalApproval = run.status === "final_check_complete" || run.status === "done"
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
       {/* ── Card header ── */}
-      <div className="px-6 py-4 border-b border-border bg-destructive/5">
+      <div className={`px-6 py-4 border-b border-border ${isFinalApproval ? "bg-amber-500/5" : "bg-destructive/5"}`}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <ShieldAlert className="h-4 w-4 text-destructive shrink-0" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-destructive">
-                Escalated to {roleLabel}
+              {isFinalApproval
+                ? <CheckCircle2 className="h-4 w-4 text-amber-600 shrink-0" />
+                : <ShieldAlert className="h-4 w-4 text-destructive shrink-0" />}
+              <span className={`text-xs font-semibold uppercase tracking-wide ${isFinalApproval ? "text-amber-600" : "text-destructive"}`}>
+                {isFinalApproval ? `Awaiting Approval — ${roleLabel}` : `Escalated to ${roleLabel}`}
               </span>
             </div>
             <h2 className="text-base font-semibold text-foreground leading-snug">{title}</h2>
@@ -309,7 +379,7 @@ function EscalationReportCard({
                         className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                       >
                         {resolving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="h-3.5 w-3.5" />}
-                        {resolving ? "Resolving…" : "Resolve"}
+                        {resolving ? (isFinalApproval ? "Approving…" : "Resolving…") : (isFinalApproval ? "Approve" : "Resolve")}
                       </button>
                       <button
                         onClick={handleAbort}
@@ -320,7 +390,9 @@ function EscalationReportCard({
                         {aborting ? "Aborting…" : "Abort"}
                       </button>
                       <span className="text-[11px] text-muted-foreground ml-1">
-                        Resolve resumes the procurement pipeline · Abort permanently deletes this request
+                        {isFinalApproval
+                          ? "Approve marks this procurement as awarded · Abort permanently deletes this request"
+                          : "Resolve resumes the procurement pipeline · Abort permanently deletes this request"}
                       </span>
                     </div>
                   )}
