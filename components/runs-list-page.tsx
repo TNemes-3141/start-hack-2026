@@ -690,9 +690,6 @@ export function RunsListPage({
             onResolveIssue={async (stageKey, issueId) => {
               await resolveIssue(selectedRun.id, selectedRun.context_payload ?? createRequestData(), selectedRun.node_statuses ?? INITIAL_STATUSES, stageKey, issueId)
             }}
-            onAcknowledgeItem={async (stageKey, type, itemId) => {
-              await acknowledgeItem(selectedRun.id, selectedRun.context_payload ?? createRequestData(), stageKey, type, itemId)
-            }}
           />
         </div>
         <SupplierShortlistSection
