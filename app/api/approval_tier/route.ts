@@ -257,7 +257,7 @@ export async function POST(req: NextRequest) {
       rule: "ER-000",
       trigger: `Approval tier ${finalThreshold.tier_number} (${finalThreshold.threshold_id}) requires ${finalThreshold.deviation_approval_required_from.join(", ")} sign-off`,
       escalate_to: escalationTarget,
-      blocking: false,
+      blocking: true,
     });
   } else if (escalateToProcurementMinimum) {
     // LLM involved but tier 1 — still escalate to Procurement as minimum
@@ -266,7 +266,7 @@ export async function POST(req: NextRequest) {
       rule: "ER-000",
       trigger: `LLM review involved in tier determination — escalating to Procurement as minimum per policy`,
       escalate_to: "Procurement Manager",
-      blocking: false,
+      blocking: true,
     });
   }
 

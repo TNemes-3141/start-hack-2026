@@ -17,6 +17,7 @@ export type Escalation = {
   trigger: string;
   escalate_to: string;
   blocking: boolean;
+  acknowledged?: boolean;
 };
 
 export type Reasoning = {

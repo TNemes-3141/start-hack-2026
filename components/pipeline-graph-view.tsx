@@ -456,11 +456,14 @@ function Row({ label, value }: { label: string; value: string }) {
 function IssueCard({
   issue,
   onResolve,
+  onAcknowledge,
 }: {
   issue: import("@/lib/request-data").Issue;
   onResolve?: (issueId: string) => Promise<void>;
+  onAcknowledge?: (issueId: string) => Promise<void>;
 }) {
   const [resolving, setResolving] = useState(false);
+  const [acknowledging, setAcknowledging] = useState(false);
   const isResolved = issue.resolved === true;
   const isBlocking = issue.blocking && !isResolved;
 
@@ -522,24 +525,84 @@ function IssueCard({
         </div>
       )}
 
-      {/* Resolve button — only for blocking, unresolved issues when callback provided */}
+      {/* Resolve button — blocking unresolved issues */}
       {isBlocking && onResolve && (
         <button
           onClick={async () => {
             setResolving(true);
-            try {
-              await onResolve(issue.issue_id);
-            } finally {
-              setResolving(false);
-            }
+            try { await onResolve(issue.issue_id); } finally { setResolving(false); }
           }}
           disabled={resolving}
           className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <CheckCheck className="h-3.5 w-3.5" />
-          {resolving
-            ? "Resolving…"
-            : `Resolve — ${issue.escalate_to ?? "Approver"}`}
+          {resolving ? "Resolving…" : `Resolve — ${issue.escalate_to ?? "Approver"}`}
+        </button>
+      )}
+      {/* Acknowledge button — advisory (non-blocking) unresolved issues */}
+      {!isBlocking && !isResolved && onAcknowledge && (
+        <button
+          onClick={async () => {
+            setAcknowledging(true);
+            try { await onAcknowledge(issue.issue_id); } finally { setAcknowledging(false); }
+          }}
+          disabled={acknowledging}
+          className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+          {acknowledging ? "Acknowledging…" : `Acknowledge — ${issue.escalate_to ?? "Reviewer"}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function EscalationCard({
+  escalation,
+  onAcknowledge,
+}: {
+  escalation: import("@/lib/request-data").Escalation;
+  onAcknowledge?: (escalationId: string) => Promise<void>;
+}) {
+  const [acknowledging, setAcknowledging] = useState(false);
+  const isAcknowledged = escalation.acknowledged === true;
+
+  return (
+    <div className={`rounded-md border px-3 py-2.5 ${isAcknowledged ? "border-emerald-500/30 bg-emerald-500/5" : escalation.blocking ? "border-destructive/30 bg-destructive/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <span className={`text-xs font-medium ${escalation.blocking ? "text-destructive" : "text-amber-700 dark:text-amber-400"}`}>
+          {escalation.rule}
+        </span>
+        {isAcknowledged ? (
+          <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-600 gap-1 shrink-0">
+            <CheckCheck className="h-2.5 w-2.5" />
+            Acknowledged
+          </Badge>
+        ) : escalation.blocking ? (
+          <Badge variant="destructive" className="text-[10px] shrink-0">Blocking</Badge>
+        ) : (
+          <Badge variant="secondary" className="text-[10px] shrink-0">Advisory</Badge>
+        )}
+      </div>
+      {escalation.trigger && (
+        <p className="text-xs text-muted-foreground mt-1">{escalation.trigger}</p>
+      )}
+      {escalation.escalate_to && (
+        <p className="text-xs text-muted-foreground mt-0.5">
+          <span className="font-medium">Escalate to:</span> {escalation.escalate_to}
+        </p>
+      )}
+      {!escalation.blocking && !isAcknowledged && onAcknowledge && (
+        <button
+          onClick={async () => {
+            setAcknowledging(true);
+            try { await onAcknowledge(escalation.escalation_id); } finally { setAcknowledging(false); }
+          }}
+          disabled={acknowledging}
+          className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-md border border-muted-foreground/30 bg-muted/50 px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+          {acknowledging ? "Acknowledging…" : `Acknowledge — ${escalation.escalate_to ?? "Reviewer"}`}
         </button>
       )}
     </div>
@@ -553,6 +616,7 @@ function NodeDetailPanel({
   open,
   onClose,
   onResolveIssue,
+  onAcknowledgeItem,
 }: {
   nodeId: NodeId;
   status: PipelineNodeStatus;
@@ -560,6 +624,7 @@ function NodeDetailPanel({
   open: boolean;
   onClose: () => void;
   onResolveIssue?: (issueId: string) => Promise<void>;
+  onAcknowledgeItem?: (type: "issue" | "escalation", itemId: string) => Promise<void>;
 }) {
   const label = nodeLabels[nodeId];
   const { icon } = statusConfig[status];
@@ -648,35 +713,11 @@ function NodeDetailPanel({
             ) : (
               <div className="flex flex-col gap-2">
                 {sortedEscalations.map((e) => (
-                  <div
+                  <EscalationCard
                     key={e.escalation_id}
-                    className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-medium text-destructive">
-                        {e.rule}
-                      </span>
-                      {e.blocking && (
-                        <Badge
-                          variant="destructive"
-                          className="text-[10px] shrink-0"
-                        >
-                          Blocking
-                        </Badge>
-                      )}
-                    </div>
-                    {e.trigger && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {e.trigger}
-                      </p>
-                    )}
-                    {e.escalate_to && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        <span className="font-medium">Escalate to:</span>{" "}
-                        {e.escalate_to}
-                      </p>
-                    )}
-                  </div>
+                    escalation={e}
+                    onAcknowledge={onAcknowledgeItem ? (id) => onAcknowledgeItem("escalation", id) : undefined}
+                  />
                 ))}
               </div>
             )}
@@ -698,6 +739,7 @@ function NodeDetailPanel({
                     key={issue.issue_id}
                     issue={issue}
                     onResolve={onResolveIssue}
+                    onAcknowledge={onAcknowledgeItem ? (id) => onAcknowledgeItem("issue", id) : undefined}
                   />
                 ))}
               </div>
@@ -1000,6 +1042,7 @@ export function PipelineGraphView({
   mode,
   onApprove,
   onResolveIssue,
+  onAcknowledgeItem,
 }: {
   nodeStatuses: NodeStatuses;
   requestData: RequestData;
@@ -1007,6 +1050,7 @@ export function PipelineGraphView({
   mode?: OrchestratorMode;
   onApprove?: () => Promise<void>;
   onResolveIssue?: (stageKey: string, issueId: string) => Promise<void>;
+  onAcknowledgeItem?: (stageKey: string, type: "issue" | "escalation", itemId: string) => Promise<void>;
 }) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -1223,11 +1267,16 @@ export function PipelineGraphView({
         onResolveIssue={
           onResolveIssue
             ? (issueId) => {
-                const stageKey =
-                  nodeToStageId[lastNodeId.current ?? "request-submitted"];
-                return stageKey
-                  ? onResolveIssue(stageKey, issueId)
-                  : Promise.resolve();
+                const stageKey = nodeToStageId[lastNodeId.current ?? "request-submitted"];
+                return stageKey ? onResolveIssue(stageKey, issueId) : Promise.resolve();
+              }
+            : undefined
+        }
+        onAcknowledgeItem={
+          onAcknowledgeItem
+            ? (type, itemId) => {
+                const stageKey = nodeToStageId[lastNodeId.current ?? "request-submitted"];
+                return stageKey ? onAcknowledgeItem(stageKey, type, itemId) : Promise.resolve();
               }
             : undefined
         }

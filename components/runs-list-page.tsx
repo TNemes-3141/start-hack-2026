@@ -506,7 +506,7 @@ export function RunsListPage({
 }) {
   const isEscalationMode = escalateTo !== undefined
 
-  const { approveAndResume, resolveIssue } = useRequestStore()
+  const { approveAndResume, resolveIssue, acknowledgeItem } = useRequestStore()
   const [roleLabel, setRoleLabel] = useState<string | null>(null)
   useEffect(() => {
     fetch("/api/session").then(r => r.json()).then((d: { roleLabel: string | null }) => setRoleLabel(d.roleLabel)).catch(() => null)
@@ -674,6 +674,9 @@ export function RunsListPage({
             onApprove={handleApprove}
             onResolveIssue={async (stageKey, issueId) => {
               await resolveIssue(selectedRun.id, selectedRun.context_payload ?? createRequestData(), selectedRun.node_statuses ?? INITIAL_STATUSES, stageKey, issueId)
+            }}
+            onAcknowledgeItem={async (stageKey, type, itemId) => {
+              await acknowledgeItem(selectedRun.id, selectedRun.context_payload ?? createRequestData(), stageKey, type, itemId)
             }}
           />
         </div>

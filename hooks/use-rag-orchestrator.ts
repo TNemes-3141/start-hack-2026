@@ -40,6 +40,7 @@ export type RAGOrchestratorState = {
   startPipeline: (form: RequestInterpretation) => Promise<string>; // Function to start a new pipeline.
   approveAndResume: (existingRunId: string, existingData: RequestData, approvedByLabel: string) => Promise<void>; // Function to approve and resume a blocked pipeline.
   resolveIssue: (runId: string, data: RequestData, existingNodeStatuses: NodeStatuses, stageKey: string, issueId: string) => Promise<void>; // Function to resolve a blocking issue.
+  acknowledgeItem: (runId: string, data: RequestData, stageKey: string, type: "issue" | "escalation", itemId: string) => Promise<void>; // Function to acknowledge an advisory item without resuming.
 };
 
 // Type definition for a database row representing a pipeline run.
@@ -415,5 +416,50 @@ export function useRAGOrchestrator(): RAGOrchestratorState {
     void runPipeline(runId, updatedInterp, true, { data: updatedDataWithNote, completedStages });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { runId, requestData, nodeStatuses, isPipelineRunning, mode: "owner", startPipeline, approveAndResume, resolveIssue };
+  // ── Acknowledge an advisory item (no pipeline resume) ────────────────────
+
+  const acknowledgeItem = useCallback(async (
+    runId: string,
+    data: RequestData,
+    stageKey: string,
+    type: "issue" | "escalation",
+    itemId: string,
+  ): Promise<void> => {
+    const stageId = stageKey as StageId;
+    const stage = data.stages[stageId];
+    if (!stage) return;
+
+    let updatedData: RequestData;
+    if (type === "issue") {
+      updatedData = {
+        ...data,
+        stages: {
+          ...data.stages,
+          [stageId]: {
+            ...stage,
+            issues: stage.issues.map((i) =>
+              i.issue_id === itemId ? { ...i, resolved: true } : i
+            ),
+          },
+        },
+      };
+    } else {
+      updatedData = {
+        ...data,
+        stages: {
+          ...data.stages,
+          [stageId]: {
+            ...stage,
+            escalations: stage.escalations.map((e) =>
+              e.escalation_id === itemId ? { ...e, acknowledged: true } : e
+            ),
+          },
+        },
+      };
+    }
+
+    await patchRun(runId, { context_payload: updatedData });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { runId, requestData, nodeStatuses, isPipelineRunning, mode: "owner", startPipeline, approveAndResume, resolveIssue, acknowledgeItem };
 }
