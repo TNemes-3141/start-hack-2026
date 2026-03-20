@@ -327,7 +327,7 @@ const nodeDefinitions: Omit<Node, "data">[] = [
   { id: "done", type: "status", position: snPos["done"] },
 ];
 
-const edges: Edge[] = [
+const RAW_EDGES: Edge[] = [
   { id: "e-rs-tr", source: "request-submitted", target: "translation" },
   { id: "e-rs-ic", source: "request-submitted", target: "internal-coherence" },
   {
@@ -1031,11 +1031,12 @@ export function PipelineGraphView({
     if (working.length > 0) {
       setIsRunning(true);
       setIsPaused(false);
+    } else if (outstanding.length > 0) {
+      setIsRunning(false);
+      setIsPaused(true);
     } else {
-      if (outstanding.length > 0) {
-        setIsRunning(false);
-        setIsPaused(true);
-      }
+      setIsRunning(false);
+      setIsPaused(false);
     }
   }, [nodeStatuses]);
 
@@ -1076,6 +1077,19 @@ export function PipelineGraphView({
         };
       }),
     [nodeStatuses, workingStartTimes],
+  );
+
+  const edges = useMemo<Edge[]>(
+    () =>
+      RAW_EDGES.filter((e) => {
+        const srcStatus = nodeStatuses[e.source as NodeId] ?? "outstanding";
+        return srcStatus !== "outstanding";
+      }).map((e) => {
+        const srcStatus = nodeStatuses[e.source as NodeId] ?? "outstanding";
+        const animated = srcStatus === "working";
+        return { ...e, animated };
+      }),
+    [nodeStatuses],
   );
 
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
